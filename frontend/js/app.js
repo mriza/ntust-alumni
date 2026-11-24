@@ -8,6 +8,13 @@ const API_BASE = (window.location.hostname === 'localhost' || window.location.ho
 let currentUser = null;
 let token = localStorage.getItem('token');
 
+// XSS protection: escape HTML special chars
+function esc(str) {
+    const d = document.createElement("div");
+    d.textContent = String(str ?? "");
+    return d.innerHTML;
+}
+
 // Helper functions
 async function apiFetch(path, options = {}) {
     const headers = {
@@ -605,7 +612,7 @@ async function loadDirectory() {
         const card = document.createElement('div');
         card.className = 'alumni-card';
         card.innerHTML = `
-            <h4>${a.nama || '-'}</h4>
+            <h4>${esc(a.nama) || '-'}</h4>
             <div class="wilayah">${a.wilayah || '-'}</div>
             <span class="badge badge-${a.role === 'member' ? 'member' : a.role}">${a.role || 'Member'}</span>
         `;
@@ -714,11 +721,11 @@ async function loadForum() {
         postEl.className = 'forum-post-item';
         postEl.innerHTML = `
             <div class="forum-post-header">
-                <span class="forum-post-author">${p.penulis_nama || '-'}</span>
+                <span class="forum-post-author">${esc(p.penulis_nama) || '-'}</span>
                 <span class="forum-post-date">${formatDate(p.dibuat_pada)}</span>
             </div>
-            <h4 class="forum-post-title">${p.judul || '-'}</h4>
-            <div class="forum-post-body">${p.isi || ''}</div>
+            <h4 class="forum-post-title">${esc(p.judul) || '-'}</h4>
+            <div class="forum-post-body">${esc(p.isi) || ''}</div>
         `;
         listEl.appendChild(postEl);
     });
@@ -849,7 +856,7 @@ async function loadSubgroups() {
         const card = document.createElement('div');
         card.className = 'alumni-card';
         card.innerHTML = `
-            <h4>${s.nama}</h4>
+            <h4>${esc(s.nama)}</h4>
             <div class="wilayah">${s.wilayah}</div>
             ${s.deskripsi ? `<p style="font-size: 13px; color: #555;">${s.deskripsi}</p>` : ''}
             ${s.admin_id ? `<span class="badge badge-admin">Admin: ${s.admin_id.substring(0, 8)}...</span>` : ''}

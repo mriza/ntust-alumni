@@ -1,0 +1,6 @@
+{
+  "file": "frontend/js/app.js",
+  "section": "Helpers",
+  "find": "function apiFetch(path, options = {}) {",
+  "note": "Add esc() helper before apiFetch"
+}
