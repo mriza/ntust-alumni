@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,17 +19,11 @@ func NewAuthHandler(database *db.CouchDB) *AuthHandler {
 	return &AuthHandler{database: database}
 }
 
-// Register pendaftaran alumni baru (hanya email @ntust.edu.tw)
+// Register pendaftaran alumni baru (email bebas, status pending)
 func (h *AuthHandler) Register(c *gin.Context) {
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid: " + err.Error()})
-		return
-	}
-
-	// Validasi email domain @ntust.edu.tw
-	if !strings.HasSuffix(strings.ToLower(req.Email), "@ntust.edu.tw") {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Hanya email @ntust.edu.tw yang diperbolehkan"})
 		return
 	}
 
@@ -57,7 +50,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		Wilayah:    req.Wilayah,
 		Telepon:    req.Telepon,
 		Role:       "member",
-		Password:   string(hashedPassword),
+		Status:     "pending",
+		PasswordHash: string(hashedPassword),
 	}
 
 	if err := h.database.SaveAlumni(c.Request.Context(), alumni); err != nil {
@@ -89,7 +83,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(alumni.Password), []byte(req.Password)); err != nil {
+	if err := bcrypt.CompareHashAndPassword([]byte(alumni.PasswordHash), []byte(req.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Email atau password salah"})
 		return
 	}

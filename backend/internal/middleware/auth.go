@@ -54,6 +54,7 @@ func AuthMiddleware() gin.HandlerFunc {
 		c.Set("user_role", claims["role"])
 		c.Set("user_email", claims["email"])
 		c.Next()
+	}
 }
 
 // RequireRole memeriksa apakah user memiliki role yang diizinkan

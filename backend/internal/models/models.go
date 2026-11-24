@@ -4,19 +4,26 @@ import "time"
 
 // Alumni mewakili data anggota alumni NTUST
 type Alumni struct {
-	ID          string    `json:"id,omitempty" db:"_id,omitempty"`
-	Rev         string    `json:"rev,omitempty" db:"_rev,omitempty"`
-	Nama        string    `json:"nama"`
-	Email       string    `json:"email"`
-	Nim         string    `json:"nim"`
-	Jurusan     string    `json:"jurusan"`
-	TahunLulus  int       `json:"tahun_lulus"`
-	Wilayah     string    `json:"wilayah"`
-	Telepon     string    `json:"telepon"`
-	Role        string    `json:"role"` // member, regional_admin, super_admin
-	SubgroupID  string    `json:"subgroup_id,omitempty"`
-	DibuatPada  time.Time `json:"dibuat_pada,omitempty"`
-	Diperbarui  time.Time `json:"diperbarui,omitempty"`
+	ID              string    `json:"id,omitempty" db:"_id,omitempty"`
+	Rev             string    `json:"rev,omitempty" db:"_rev,omitempty"`
+	Nama            string    `json:"nama"`
+	Email           string    `json:"email"`
+	PasswordHash    string    `json:"-" db:"-"`
+	Nim             string    `json:"nim"`
+	Jurusan         string    `json:"jurusan"`
+	TahunLulus      int       `json:"tahun_lulus"`
+	Wilayah         string    `json:"wilayah"`
+	Telepon         string    `json:"telepon"`
+	Role            string    `json:"role"` // member, regional_admin, super_admin
+	SubgroupID      string    `json:"subgroup_id,omitempty"`
+	Status          string    `json:"status"` // pending, verified
+	EmailNtust      string    `json:"email_ntust,omitempty"`
+	OtpHash         string    `json:"-"`
+	OtpExpiresAt    time.Time `json:"-"`
+	VerificationToken string   `json:"-"`
+	TokenExpiresAt  time.Time `json:"-"`
+	DibuatPada      time.Time `json:"dibuat_pada,omitempty"`
+	Diperbarui      time.Time `json:"diperbarui,omitempty"`
 }
 
 // Subgroup mewakili ikatan alumni per wilayah

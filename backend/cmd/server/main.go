@@ -11,6 +11,17 @@ import (
 	"ntust-alumni/backend/internal/middleware"
 )
 
+func SetupRouter() *gin.Engine {
+	router := gin.Default()
+
+	// Health check
+	router.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{"status": "ok"})
+	})
+
+	return router
+}
+
 func main() {
 	gin.SetMode(gin.DebugMode)
 
@@ -49,12 +60,7 @@ func main() {
 	subgroupHandler := handlers.NewSubgroupHandler(database)
 	forumHandler := handlers.NewForumHandler(database)
 
-	router := gin.Default()
-
-	// Health check
-	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
-	})
+	router := SetupRouter()
 
 	// Public routes
 	public := router.Group("/api")

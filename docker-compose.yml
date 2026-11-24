@@ -24,6 +24,9 @@ services:
       - COUCHDB_URL=http://admin:<COUCHDB_PASSWORD>@couchdb:5984
       - JWT_SECRET=<JWT_SECRET>
       - PORT=8080
+      - BREVO_API_KEY=
+      - BREVO_FROM_EMAIL=noreply@ntust-alumni.id
+      - BREVO_FROM_NAME=Alumni NTUST Indonesia
     depends_on:
       - couchdb
     restart: unless-stopped

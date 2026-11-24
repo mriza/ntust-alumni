@@ -1,56 +1,67 @@
 package db
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"time"
 
-	couchdb "github.com/leporo/go-couchdb"
 	"ntust-alumni/backend/internal/models"
 )
 
 type CouchDB struct {
-	client *couchdb.CouchDB
+	baseURL string
+	client  *http.Client
 }
 
 func NewCouchDB(url string) (*CouchDB, error) {
-	client, err := couchdb.NewCouchDB(url)
-	if err != nil {
-		return nil, fmt.Errorf("gagal membuat client couchdb: %w", err)
+	c := &CouchDB{
+		baseURL: url,
+		client:  &http.Client{Timeout: 10 * time.Second},
 	}
 
-	// Uji koneksi
-	if err := client.Ping(); err != nil {
+	if err := c.Ping(); err != nil {
 		return nil, fmt.Errorf("gagal terhubung ke couchdb: %w", err)
 	}
 
 	log.Println("Terhubung ke CouchDB")
-
-	return &CouchDB{client: client}, nil
+	return c, nil
 }
 
-// ensureDatabase memastikan database ada, jika tidak maka buat
-func (c *CouchDB) ensureDatabase(ctx context.Context, name string) error {
-	dbs, err := c.client.ListDBs()
+func (c *CouchDB) Ping() error {
+	resp, err := c.client.Get(c.baseURL + "/")
 	if err != nil {
-		return fmt.Errorf("gagal list database: %w", err)
+		return err
 	}
-
-	for _, db := range dbs {
-		if db == name {
-			return nil
-		}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("couchdb responded with status %d", resp.StatusCode)
 	}
-
-	if err := c.client.CreateDB(name); err != nil {
-		return fmt.Errorf("gagal membuat database %s: %w", name, err)
-	}
-	log.Printf("Database %s dibuat", name)
 	return nil
 }
 
-// InitDatabase inisialisasi semua database yang diperlukan
+func (c *CouchDB) ensureDatabase(ctx context.Context, name string) error {
+	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+"/"+name, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 && resp.StatusCode != 412 {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("gagal membuat database %s: status %d, body %s", name, resp.StatusCode, string(body))
+	}
+	log.Printf("Database %s siap", name)
+	return nil
+}
+
 func (c *CouchDB) InitDatabase(ctx context.Context) error {
 	for _, name := range []string{"alumni", "subgroups", "forum_posts"} {
 		if err := c.ensureDatabase(ctx, name); err != nil {
@@ -64,32 +75,29 @@ func (c *CouchDB) InitDatabase(ctx context.Context) error {
 
 func (c *CouchDB) GetAlumni(ctx context.Context, id string) (*models.Alumni, error) {
 	var a models.Alumni
-	if err := c.client.Get(ctx, "alumni", id, &a); err != nil {
+	if err := c.getDoc(ctx, "alumni", id, &a); err != nil {
 		return nil, err
 	}
 	return &a, nil
 }
 
 func (c *CouchDB) SaveAlumni(ctx context.Context, a *models.Alumni) error {
-	now := time.Now()
-	if a.DibuatPada.IsZero() {
-		a.DibuatPada = now
-	}
-	a.Diperbarui = now
-
-	resp, err := c.client.Post(ctx, "alumni", a)
+	id, rev, err := c.postDoc(ctx, "alumni", a)
 	if err != nil {
 		return err
 	}
-	a.ID = resp.ID
-	a.Rev = resp.Rev
+	a.ID = id
+	a.Rev = rev
 	return nil
 }
 
 func (c *CouchDB) UpdateAlumni(ctx context.Context, a *models.Alumni) error {
-	a.Diperbarui = time.Now()
-	_, err := c.client.Put(ctx, "alumni", a.ID, a.Rev, a)
-	return err
+	rev, err := c.putDoc(ctx, "alumni", a.ID, a.Rev, a)
+	if err != nil {
+		return err
+	}
+	a.Rev = rev
+	return nil
 }
 
 func (c *CouchDB) ListAlumni(ctx context.Context) ([]models.Alumni, error) {
@@ -98,7 +106,7 @@ func (c *CouchDB) ListAlumni(ctx context.Context) ([]models.Alumni, error) {
 			Doc models.Alumni `json:"doc"`
 		} `json:"rows"`
 	}
-	if err := c.client.Get(ctx, "alumni/_all_docs?include_docs=true", &result); err != nil {
+	if err := c.allDocs(ctx, "alumni", &result); err != nil {
 		return nil, err
 	}
 	var alumni []models.Alumni
@@ -109,16 +117,10 @@ func (c *CouchDB) ListAlumni(ctx context.Context) ([]models.Alumni, error) {
 }
 
 func (c *CouchDB) FindAlumniByEmail(ctx context.Context, email string) (*models.Alumni, error) {
-	query := map[string]interface{}{
-		"selector": map[string]interface{}{
-			"email": email,
-		},
-		"fields": []interface{}{"_id", "_rev", "nama", "email", "nim", "jurusan", "tahun_lulus", "wilayah", "telepon", "role", "subgroup_id", "dibuat_pada", "diperbarui"},
-	}
 	var result struct {
 		Docs []models.Alumni `json:"docs"`
 	}
-	if err := c.client.Post(ctx, "alumni/_find", query, &result); err != nil {
+	if err := c.findDocs(ctx, "alumni", map[string]interface{}{"email": email}, &result); err != nil {
 		return nil, err
 	}
 	if len(result.Docs) == 0 {
@@ -131,37 +133,33 @@ func (c *CouchDB) FindAlumniByEmail(ctx context.Context, email string) (*models.
 
 func (c *CouchDB) GetSubgroup(ctx context.Context, id string) (*models.Subgroup, error) {
 	var s models.Subgroup
-	if err := c.client.Get(ctx, "subgroups", id, &s); err != nil {
+	if err := c.getDoc(ctx, "subgroups", id, &s); err != nil {
 		return nil, err
 	}
 	return &s, nil
 }
 
 func (c *CouchDB) SaveSubgroup(ctx context.Context, s *models.Subgroup) error {
-	now := time.Now()
-	if s.DibuatPada.IsZero() {
-		s.DibuatPada = now
-	}
-	s.Diperbarui = now
-
-	resp, err := c.client.Post(ctx, "subgroups", s)
+	id, rev, err := c.postDoc(ctx, "subgroups", s)
 	if err != nil {
 		return err
 	}
-	s.ID = resp.ID
-	s.Rev = resp.Rev
+	s.ID = id
+	s.Rev = rev
 	return nil
 }
 
 func (c *CouchDB) UpdateSubgroup(ctx context.Context, s *models.Subgroup) error {
-	s.Diperbarui = time.Now()
-	_, err := c.client.Put(ctx, "subgroups", s.ID, s.Rev, s)
-	return err
+	rev, err := c.putDoc(ctx, "subgroups", s.ID, s.Rev, s)
+	if err != nil {
+		return err
+	}
+	s.Rev = rev
+	return nil
 }
 
 func (c *CouchDB) DeleteSubgroup(ctx context.Context, id, rev string) error {
-	_, err := c.client.Delete(ctx, "subgroups", id, rev)
-	return err
+	return c.deleteDoc(ctx, "subgroups", id, rev)
 }
 
 func (c *CouchDB) ListSubgroups(ctx context.Context) ([]models.Subgroup, error) {
@@ -170,7 +168,7 @@ func (c *CouchDB) ListSubgroups(ctx context.Context) ([]models.Subgroup, error) 
 			Doc models.Subgroup `json:"doc"`
 		} `json:"rows"`
 	}
-	if err := c.client.Get(ctx, "subgroups/_all_docs?include_docs=true", &result); err != nil {
+	if err := c.allDocs(ctx, "subgroups", &result); err != nil {
 		return nil, err
 	}
 	var subgroups []models.Subgroup
@@ -183,18 +181,12 @@ func (c *CouchDB) ListSubgroups(ctx context.Context) ([]models.Subgroup, error) 
 // --- Forum Post ---
 
 func (c *CouchDB) SaveForumPost(ctx context.Context, p *models.ForumPost) error {
-	now := time.Now()
-	if p.DibuatPada.IsZero() {
-		p.DibuatPada = now
-	}
-	p.Diperbarui = now
-
-	resp, err := c.client.Post(ctx, "forum_posts", p)
+	id, rev, err := c.postDoc(ctx, "forum_posts", p)
 	if err != nil {
 		return err
 	}
-	p.ID = resp.ID
-	p.Rev = resp.Rev
+	p.ID = id
+	p.Rev = rev
 	return nil
 }
 
@@ -204,7 +196,7 @@ func (c *CouchDB) ListForumPosts(ctx context.Context) ([]models.ForumPost, error
 			Doc models.ForumPost `json:"doc"`
 		} `json:"rows"`
 	}
-	if err := c.client.Get(ctx, "forum_posts/_all_docs?include_docs=true&descending=true", &result); err != nil {
+	if err := c.allDocs(ctx, "forum_posts", &result, "descending=true"); err != nil {
 		return nil, err
 	}
 	var posts []models.ForumPost
@@ -212,4 +204,137 @@ func (c *CouchDB) ListForumPosts(ctx context.Context) ([]models.ForumPost, error
 		posts = append(posts, row.Doc)
 	}
 	return posts, nil
+}
+
+// --- internal helpers ---
+
+func (c *CouchDB) getDoc(ctx context.Context, dbName, id string, into interface{}) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/"+dbName+"/"+id, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == 404 {
+		return fmt.Errorf("not found")
+	}
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("get doc failed: status %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(into)
+}
+
+func (c *CouchDB) postDoc(ctx context.Context, dbName string, doc interface{}) (id, rev string, err error) {
+	body, err := json.Marshal(doc)
+	if err != nil {
+		return "", "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/"+dbName, bytes.NewReader(body))
+	if err != nil {
+		return "", "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", "", fmt.Errorf("post doc failed: status %d", resp.StatusCode)
+	}
+	var result struct {
+		ID  string `json:"id"`
+		Rev string `json:"rev"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", "", err
+	}
+	return result.ID, result.Rev, nil
+}
+
+func (c *CouchDB) putDoc(ctx context.Context, dbName, id, rev string, doc interface{}) (string, error) {
+	body, err := json.Marshal(doc)
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+"/"+dbName+"/"+id+"?rev="+rev, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return "", fmt.Errorf("put doc failed: status %d", resp.StatusCode)
+	}
+	var result struct {
+		Rev string `json:"rev"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", err
+	}
+	return result.Rev, nil
+}
+
+func (c *CouchDB) deleteDoc(ctx context.Context, dbName, id, rev string) error {
+	req, err := http.NewRequestWithContext(ctx, "DELETE", c.baseURL+"/"+dbName+"/"+id+"?rev="+rev, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("delete doc failed: status %d", resp.StatusCode)
+	}
+	return nil
+}
+
+func (c *CouchDB) allDocs(ctx context.Context, dbName string, into interface{}, opts ...string) error {
+	url := c.baseURL + "/" + dbName + "/_all_docs?include_docs=true"
+	for _, o := range opts {
+		url += "&" + o
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("all_docs failed: status %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(into)
+}
+
+func (c *CouchDB) findDocs(ctx context.Context, dbName string, selector interface{}, into interface{}) error {
+	body, err := json.Marshal(map[string]interface{}{"selector": selector})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/"+dbName+"/_find", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("find failed: status %d", resp.StatusCode)
+	}
+	return json.NewDecoder(resp.Body).Decode(into)
 }
