@@ -29,11 +29,9 @@ func (h *ForumHandler) ListForumPosts(c *gin.Context) {
 	})
 }
 
-// CreateForumPost membuat postingan forum baru
+// CreateForumPost membuat postingan forum baru (hanya alumni terverifikasi)
 func (h *ForumHandler) CreateForumPost(c *gin.Context) {
 	userID, _ := c.Get("user_id")
-	userNama, _ := c.Get("user_nama")
-	userWilayah, _ := c.Get("user_wilayah")
 
 	var req models.ForumPostRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -41,12 +39,23 @@ func (h *ForumHandler) CreateForumPost(c *gin.Context) {
 		return
 	}
 
+	alumni, err := h.database.GetAlumni(c.Request.Context(), userID.(string))
+	if err != nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Alumni tidak ditemukan"})
+		return
+	}
+
+	if alumni.Status != "verified" {
+		c.JSON(http.StatusForbidden, models.ErrorResponse{Error: "Akun belum terverifikasi. Silakan verifikasi email dan NIM terlebih dahulu"})
+		return
+	}
+
 	post := &models.ForumPost{
 		Judul:       req.Judul,
 		Isi:         req.Isi,
-		PenulisID:   userID.(string),
-		PenulisNama: userNama.(string),
-		Wilayah:     userWilayah.(string),
+		PenulisID:   alumni.ID,
+		PenulisNama: alumni.Nama,
+		Wilayah:     alumni.Wilayah,
 	}
 
 	if err := h.database.SaveForumPost(c.Request.Context(), post); err != nil {
