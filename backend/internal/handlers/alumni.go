@@ -17,7 +17,7 @@ func NewAlumniHandler(database db.Store) *AlumniHandler {
 	return &AlumniHandler{database: database}
 }
 
-// ListAlumni mengembalikan daftar semua alumni
+// ListAlumni mengembalikan daftar semua alumni VERIFIED (direktori)
 func (h *AlumniHandler) ListAlumni(c *gin.Context) {
 	alumni, err := h.database.ListAlumni(c.Request.Context())
 	if err != nil {
@@ -25,42 +25,67 @@ func (h *AlumniHandler) ListAlumni(c *gin.Context) {
 		return
 	}
 
-	// Hilangkan password dari response
-	type AlumniPublic struct {
-		ID          string    `json:"id"`
-		Nama        string    `json:"nama"`
-		Email       string    `json:"email"`
-		Nim         string    `json:"nim"`
-		Jurusan     string    `json:"jurusan"`
-		TahunLulus  int       `json:"tahun_lulus"`
-		Wilayah     string    `json:"wilayah"`
-		Telepon     string    `json:"telepon"`
-		Role        string    `json:"role"`
-		SubgroupID  string    `json:"subgroup_id"`
-		DibuatPada  time.Time `json:"dibuat_pada"`
-	}
-
 	var result []AlumniPublic
 	for _, a := range alumni {
-		result = append(result, AlumniPublic{
-			ID:          a.ID,
-			Nama:        a.Nama,
-			Email:       a.Email,
-			Nim:         a.Nim,
-			Jurusan:     a.Jurusan,
-			TahunLulus:  a.TahunLulus,
-			Wilayah:     a.Wilayah,
-			Telepon:     a.Telepon,
-			Role:        a.Role,
-			SubgroupID:  a.SubgroupID,
-			DibuatPada:  a.DibuatPada,
-		})
+		if a.Status != "verified" {
+			continue
+		}
+		result = append(result, AlumniPublicFromAlumni(&a))
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse{
 		Message: "Data alumni berhasil diambil",
 		Data:    result,
 	})
+}
+
+// AlumniPublic adalah representasi public dari alumni yang ditampilkan ke publik
+type AlumniPublic struct {
+	ID              string         `json:"id"`
+	Nama            string         `json:"nama"`
+	Email           string         `json:"email"`
+	Nim             string         `json:"nim,omitempty"`
+	Status          string         `json:"status"`
+	Wilayah         string         `json:"wilayah,omitempty"`
+	SubgroupID      string         `json:"subgroup_id,omitempty"`
+	Role            string         `json:"role"`
+	NoTelp          string         `json:"no_telp,omitempty"`
+	NoWA            string         `json:"no_wa,omitempty"`
+	Telegram        string         `json:"telegram,omitempty"`
+	Sosmed          *models.Sosmed `json:"sosmed,omitempty"`
+	FotoProfil      string         `json:"foto_profil,omitempty"`
+	LinkedIn        string         `json:"linkedin,omitempty"`
+	BidangKeahianan []string       `json:"bidang_keahlian,omitempty"`
+	PreferensiKontak string        `json:"preferensi_kontak,omitempty"`
+	StatusKeaktifan  string        `json:"status_keaktifan,omitempty"`
+	Pekerjaan       *models.Pekerjaan `json:"pekerjaan,omitempty"`
+	PendidikanNTUST *models.PendidikanNTUST `json:"pendidikan_ntust,omitempty"`
+	DibuatPada      time.Time      `json:"dibuat_pada,omitempty"`
+}
+
+func AlumniPublicFromAlumni(a *models.Alumni) AlumniPublic {
+	return AlumniPublic{
+		ID:               a.ID,
+		Nama:             a.Nama,
+		Email:            a.Email,
+		Nim:              a.Nim,
+		Status:           a.Status,
+		Wilayah:          a.Wilayah,
+		SubgroupID:       a.SubgroupID,
+		Role:             a.Role,
+		NoTelp:           a.NoTelp,
+		NoWA:             a.NoWA,
+		Telegram:         a.Telegram,
+		Sosmed:           a.Sosmed,
+		FotoProfil:       a.FotoProfil,
+		LinkedIn:         a.LinkedIn,
+		BidangKeahianan:  a.BidangKeahianan,
+		PreferensiKontak: a.PreferensiKontak,
+		StatusKeaktifan:  a.StatusKeaktifan,
+		Pekerjaan:        a.Pekerjaan,
+		PendidikanNTUST:  a.PendidikanNTUST,
+		DibuatPada:       a.DibuatPada,
+	}
 }
 
 // GetAlumniByID mengembalikan detail satu alumni
@@ -74,22 +99,28 @@ func (h *AlumniHandler) GetAlumniByID(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.SuccessResponse{
 		Message: "Data alumni ditemukan",
-		Data: gin.H{
-			"id":           alumni.ID,
-			"nama":         alumni.Nama,
-			"email":        alumni.Email,
-			"nim":          alumni.Nim,
-			"jurusan":      alumni.Jurusan,
-			"tahun_lulus":  alumni.TahunLulus,
-			"wilayah":      alumni.Wilayah,
-			"telepon":      alumni.Telepon,
-			"role":         alumni.Role,
-			"subgroup_id":  alumni.SubgroupID,
-		},
+		Data:    AlumniPublicFromAlumni(alumni),
 	})
 }
 
-// UpdateAlumni memperbarui data alumni (self atau admin)
+// UpdateAlumniRequest adalah body request untuk PUT /alumni/:id
+type UpdateAlumniRequest struct {
+	Nama             string                    `json:"nama,omitempty"`
+	NoTelp           string                    `json:"no_telp,omitempty"`
+	NoWA             string                    `json:"no_wa,omitempty"`
+	Telegram         string                    `json:"telegram,omitempty"`
+	Sosmed           *models.Sosmed            `json:"sosmed,omitempty"`
+	FotoProfil       string                    `json:"foto_profil,omitempty"`
+	LinkedIn         string                    `json:"linkedin,omitempty"`
+	BidangKeahianan  []string                  `json:"bidang_keahlian,omitempty"`
+	PreferensiKontak string                    `json:"preferensi_kontak,omitempty"`
+	StatusKeaktifan  string                    `json:"status_keaktifan,omitempty"`
+	Pekerjaan        *models.Pekerjaan         `json:"pekerjaan,omitempty"`
+	PendidikanNTUST  *models.PendidikanNTUST   `json:"pendidikan_ntust,omitempty"`
+	Wilayah          string                    `json:"wilayah,omitempty"`
+}
+
+// UpdateAlumni memperbarui profil alumni (sendiri atau admin)
 func (h *AlumniHandler) UpdateAlumni(c *gin.Context) {
 	id := c.Param("id")
 	userID, _ := c.Get("user_id")
@@ -101,9 +132,9 @@ func (h *AlumniHandler) UpdateAlumni(c *gin.Context) {
 		return
 	}
 
-	var req models.RegisterRequest
+	var req UpdateAlumniRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid"})
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid: " + err.Error()})
 		return
 	}
 
@@ -113,17 +144,54 @@ func (h *AlumniHandler) UpdateAlumni(c *gin.Context) {
 		return
 	}
 
-	alumni.Nama = req.Nama
-	alumni.Nim = req.Nim
-	alumni.Jurusan = req.Jurusan
-	alumni.TahunLulus = req.TahunLulus
-	alumni.Wilayah = req.Wilayah
-	alumni.Telepon = req.Telepon
+	// Update semua field yang di-request
+	if req.Nama != "" {
+		alumni.Nama = req.Nama
+	}
+	if req.NoTelp != "" {
+		alumni.NoTelp = req.NoTelp
+	}
+	if req.NoWA != "" {
+		alumni.NoWA = req.NoWA
+	}
+	if req.Telegram != "" {
+		alumni.Telegram = req.Telegram
+	}
+	if req.Sosmed != nil {
+		alumni.Sosmed = req.Sosmed
+	}
+	if req.FotoProfil != "" {
+		alumni.FotoProfil = req.FotoProfil
+	}
+	if req.LinkedIn != "" {
+		alumni.LinkedIn = req.LinkedIn
+	}
+	if req.BidangKeahianan != nil {
+		alumni.BidangKeahianan = req.BidangKeahianan
+	}
+	if req.PreferensiKontak != "" {
+		alumni.PreferensiKontak = req.PreferensiKontak
+	}
+	if req.StatusKeaktifan != "" {
+		alumni.StatusKeaktifan = req.StatusKeaktifan
+	}
+	if req.Pekerjaan != nil {
+		alumni.Pekerjaan = req.Pekerjaan
+	}
+	if req.PendidikanNTUST != nil {
+		alumni.PendidikanNTUST = req.PendidikanNTUST
+	}
+	if req.Wilayah != "" {
+		alumni.Wilayah = req.Wilayah
+	}
 
 	if err := h.database.UpdateAlumni(c.Request.Context(), alumni); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal memperbarui data"})
 		return
 	}
 
-	c.JSON(http.StatusOK, models.SuccessResponse{Message: "Data alumni berhasil diperbarui"})
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Message: "Profil alumni berhasil diperbarui",
+		Data:    AlumniPublicFromAlumni(alumni),
+	})
 }

@@ -77,10 +77,17 @@ func main() {
 		public.POST("/register", authHandler.Register)
 		public.POST("/login", authHandler.Login)
 		public.POST("/verify", verificationHandler.Verify)
-		public.GET("/alumni", alumniHandler.ListAlumni)
-		public.GET("/alumni/:id", alumniHandler.GetAlumniByID)
-		public.GET("/subgroups", subgroupHandler.ListSubgroups)
+		public.POST("/subgroups", subgroupHandler.CreateSubgroup)
 		public.GET("/forum", forumHandler.ListForumPosts)
+	}
+
+	// Verified alumni routes (hanya alumni terverifikasi)
+	verified := router.Group("/api")
+	verified.Use(middleware.AuthMiddleware())
+	verified.Use(middleware.RequireVerified())
+	{
+		verified.GET("/alumni", alumniHandler.ListAlumni)
+		verified.GET("/alumni/:id", alumniHandler.GetAlumniByID)
 	}
 
 	// Protected routes (perlu login)

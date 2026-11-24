@@ -42,16 +42,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	alumni := &models.Alumni{
-		Nama:       req.Nama,
-		Email:      req.Email,
-		Nim:        req.Nim,
-		Jurusan:    req.Jurusan,
-		TahunLulus: req.TahunLulus,
-		Wilayah:    req.Wilayah,
-		Telepon:    req.Telepon,
-		Role:       "member",
-		Status:     "pending",
-		PasswordHash: string(hashedPassword),
+		Nama:          req.Nama,
+		Email:         req.Email,
+		Nim:           req.Nim,
+		Jurusan:       req.Jurusan,
+		Status:        "pending",
+		Role:          "member",
+		PasswordHash:  string(hashedPassword),
 	}
 
 	if err := h.database.SaveAlumni(c.Request.Context(), alumni); err != nil {
@@ -93,6 +90,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		"user_id":  alumni.ID,
 		"email":    alumni.Email,
 		"role":     alumni.Role,
+		"status":   alumni.Status,
 		"exp":      time.Now().Add(24 * time.Hour).Unix(),
 	})
 
@@ -121,13 +119,12 @@ func (h *AuthHandler) Me(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":          alumni.ID,
+		"no_telp":     alumni.NoTelp,
 		"nama":        alumni.Nama,
 		"email":       alumni.Email,
 		"nim":         alumni.Nim,
 		"jurusan":     alumni.Jurusan,
-		"tahun_lulus": alumni.TahunLulus,
 		"wilayah":     alumni.Wilayah,
-		"telepon":     alumni.Telepon,
 		"role":        alumni.Role,
 	})
 }
