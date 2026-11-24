@@ -24,6 +24,16 @@ func validateConfig() error {
 func SetupRouter() *gin.Engine {
 	router := gin.Default()
 
+	// Security headers
+	router.Use(func(c *gin.Context) {
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("X-Frame-Options", "SAMEORIGIN")
+		c.Header("X-XSS-Protection", "1; mode=block")
+		c.Header("Strict-Transport-Security", "max-age=31536000")
+		c.Header("Content-Security-Policy", "default-src 'self'; script-src 'self'")
+		c.Next()
+	})
+
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(200, gin.H{"status": "ok"})
