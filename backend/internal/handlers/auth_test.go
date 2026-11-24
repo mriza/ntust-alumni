@@ -70,6 +70,15 @@ func (f *fakeDB) FindAlumniByEmail(ctx context.Context, email string) (*models.A
 	return nil, nil
 }
 
+func (f *fakeDB) FindAlumniByVerificationToken(ctx context.Context, token string) (*models.Alumni, error) {
+	for _, a := range f.alumni {
+		if a.VerificationToken == token {
+			return a, nil
+		}
+	}
+	return nil, nil
+}
+
 func (f *fakeDB) GetSubgroup(ctx context.Context, id string) (*models.Subgroup, error) { return nil, nil }
 func (f *fakeDB) SaveSubgroup(ctx context.Context, s *models.Subgroup) error            { return nil }
 func (f *fakeDB) UpdateSubgroup(ctx context.Context, s *models.Subgroup) error         { return nil }
@@ -84,6 +93,23 @@ var _ db.Store = (*fakeDB)(nil)
 
 type errNotFound struct{}
 func (e *errNotFound) Error() string { return "not found" }
+
+// fakeEmailClient implements email sending for verification handler tests
+type fakeEmailClient struct {
+	sentTo     string
+	sentOTP    string
+	sentToken  string
+	sendError  error
+	callCount  int
+}
+
+func (f *fakeEmailClient) SendVerificationOTP(to, otp, token string) error {
+	f.callCount++
+	f.sentTo = to
+	f.sentOTP = otp
+	f.sentToken = token
+	return f.sendError
+}
 
 func TestRegisterCreatesPendingAlumni(t *testing.T) {
 	gin.SetMode(gin.TestMode)

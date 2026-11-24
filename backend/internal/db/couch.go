@@ -30,6 +30,8 @@ type Store interface {
 	SaveForumPost(ctx context.Context, p *models.ForumPost) error
 	ListForumPosts(ctx context.Context) ([]models.ForumPost, error)
 
+	FindAlumniByVerificationToken(ctx context.Context, token string) (*models.Alumni, error)
+
 	InitDatabase(ctx context.Context) error
 }
 
@@ -143,6 +145,19 @@ func (c *CouchDB) FindAlumniByEmail(ctx context.Context, email string) (*models.
 		Docs []models.Alumni `json:"docs"`
 	}
 	if err := c.findDocs(ctx, "alumni", map[string]interface{}{"email": email}, &result); err != nil {
+		return nil, err
+	}
+	if len(result.Docs) == 0 {
+		return nil, nil
+	}
+	return &result.Docs[0], nil
+}
+
+func (c *CouchDB) FindAlumniByVerificationToken(ctx context.Context, token string) (*models.Alumni, error) {
+	var result struct {
+		Docs []models.Alumni `json:"docs"`
+	}
+	if err := c.findDocs(ctx, "alumni", map[string]interface{}{"verification_token": token}, &result); err != nil {
 		return nil, err
 	}
 	if len(result.Docs) == 0 {

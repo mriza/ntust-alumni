@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"ntust-alumni/backend/internal/db"
+	"ntust-alumni/backend/internal/email"
 	"ntust-alumni/backend/internal/handlers"
 	"ntust-alumni/backend/internal/middleware"
 )
@@ -60,6 +61,14 @@ func main() {
 	subgroupHandler := handlers.NewSubgroupHandler(database)
 	forumHandler := handlers.NewForumHandler(database)
 
+	// Email client (Brevo)
+	brevoClient := email.NewBrevoClient(
+		os.Getenv("BREVO_API_KEY"),
+		os.Getenv("BREVO_FROM_EMAIL"),
+		os.Getenv("BREVO_FROM_NAME"),
+	)
+	verificationHandler := handlers.NewVerificationHandler(database, brevoClient)
+
 	router := SetupRouter()
 
 	// Public routes
@@ -67,6 +76,7 @@ func main() {
 	{
 		public.POST("/register", authHandler.Register)
 		public.POST("/login", authHandler.Login)
+		public.POST("/verify", verificationHandler.Verify)
 		public.GET("/alumni", alumniHandler.ListAlumni)
 		public.GET("/alumni/:id", alumniHandler.GetAlumniByID)
 		public.GET("/subgroups", subgroupHandler.ListSubgroups)
@@ -80,6 +90,7 @@ func main() {
 		protected.GET("/me", authHandler.Me)
 		protected.PUT("/alumni/:id", alumniHandler.UpdateAlumni)
 		protected.POST("/forum", forumHandler.CreateForumPost)
+		protected.POST("/request-verification", verificationHandler.RequestVerification)
 	}
 
 	// Admin routes (super_admin dan regional_admin)
