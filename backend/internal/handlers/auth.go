@@ -12,10 +12,10 @@ import (
 )
 
 type AuthHandler struct {
-	database *db.CouchDB
+	database db.Store
 }
 
-func NewAuthHandler(database *db.CouchDB) *AuthHandler {
+func NewAuthHandler(database db.Store) *AuthHandler {
 	return &AuthHandler{database: database}
 }
 

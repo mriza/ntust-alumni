@@ -13,6 +13,28 @@ import (
 	"ntust-alumni/backend/internal/models"
 )
 
+// Store adalah interface untuk operasi database alumni, subgroup, dan forum post.
+type Store interface {
+	GetAlumni(ctx context.Context, id string) (*models.Alumni, error)
+	SaveAlumni(ctx context.Context, a *models.Alumni) error
+	UpdateAlumni(ctx context.Context, a *models.Alumni) error
+	ListAlumni(ctx context.Context) ([]models.Alumni, error)
+	FindAlumniByEmail(ctx context.Context, email string) (*models.Alumni, error)
+
+	GetSubgroup(ctx context.Context, id string) (*models.Subgroup, error)
+	SaveSubgroup(ctx context.Context, s *models.Subgroup) error
+	UpdateSubgroup(ctx context.Context, s *models.Subgroup) error
+	DeleteSubgroup(ctx context.Context, id, rev string) error
+	ListSubgroups(ctx context.Context) ([]models.Subgroup, error)
+
+	SaveForumPost(ctx context.Context, p *models.ForumPost) error
+	ListForumPosts(ctx context.Context) ([]models.ForumPost, error)
+
+	InitDatabase(ctx context.Context) error
+}
+
+var _ Store = (*CouchDB)(nil)
+
 type CouchDB struct {
 	baseURL string
 	client  *http.Client

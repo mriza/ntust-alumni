@@ -10,10 +10,10 @@ import (
 )
 
 type AlumniHandler struct {
-	database *db.CouchDB
+	database db.Store
 }
 
-func NewAlumniHandler(database *db.CouchDB) *AlumniHandler {
+func NewAlumniHandler(database db.Store) *AlumniHandler {
 	return &AlumniHandler{database: database}
 }
 

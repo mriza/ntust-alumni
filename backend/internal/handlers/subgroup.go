@@ -9,10 +9,10 @@ import (
 )
 
 type SubgroupHandler struct {
-	database *db.CouchDB
+	database db.Store
 }
 
-func NewSubgroupHandler(database *db.CouchDB) *SubgroupHandler {
+func NewSubgroupHandler(database db.Store) *SubgroupHandler {
 	return &SubgroupHandler{database: database}
 }
 

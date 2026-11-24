@@ -9,10 +9,10 @@ import (
 )
 
 type ForumHandler struct {
-	database *db.CouchDB
+	database db.Store
 }
 
-func NewForumHandler(database *db.CouchDB) *ForumHandler {
+func NewForumHandler(database db.Store) *ForumHandler {
 	return &ForumHandler{database: database}
 }
 
