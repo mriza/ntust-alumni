@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -20,14 +21,16 @@ type EmailSender interface {
 
 // VerificationHandler menangani alur verifikasi alumni via OTP email.
 type VerificationHandler struct {
-	database db.Store
-	email    EmailSender
+	database   db.Store
+	email      EmailSender
+	rateLimiter *RateLimiter
 }
 
 func NewVerificationHandler(database db.Store, email EmailSender) *VerificationHandler {
 	return &VerificationHandler{
-		database: database,
-		email:    email,
+		database:   database,
+		email:      email,
+		rateLimiter: NewRateLimiter(),
 	}
 }
 
@@ -128,6 +131,15 @@ func (h *VerificationHandler) Verify(c *gin.Context) {
 	alumni, err := h.database.FindAlumniByVerificationToken(c.Request.Context(), req.Token)
 	if err != nil || alumni == nil {
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Token verifikasi tidak valid"})
+		return
+	}
+
+	// Rate limit: maksimal 5 attempt per token, lalu locked 15 menit
+	key := "verify-token:" + alumni.ID
+	allowed, lockUntil := h.rateLimiter.CheckAndIncrement(key, 5)
+	if !allowed {
+		returnLockDuration := time.Until(lockUntil).Minutes()
+		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak percobaan. Coba lagi dalam " + fmt.Sprintf("%.0f", returnLockDuration) + " menit"})
 		return
 	}
 
