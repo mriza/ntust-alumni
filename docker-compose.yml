@@ -2,7 +2,7 @@ version: "3.8"
 
 services:
   couchdb:
-    image: couchdb:3.3
+    image: docker.io/library/couchdb:3.3
     container_name: ntust-couchdb
     ports:
       - "5984:5984"
@@ -32,12 +32,12 @@ services:
     restart: unless-stopped
 
   frontend:
-    image: nginx:alpine
+    image: docker.io/library/nginx:alpine
     container_name: ntust-frontend
     ports:
-      - "80:80"
+      - "8081:80"
     volumes:
-      - ./frontend:/usr/share/nginx/html
+      - ./frontend:/usr/share/nginx/html:z
     restart: unless-stopped
     depends_on:
       - backend
