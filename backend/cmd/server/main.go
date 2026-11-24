@@ -77,7 +77,6 @@ func main() {
 		public.POST("/register", authHandler.Register)
 		public.POST("/login", authHandler.Login)
 		public.POST("/verify", verificationHandler.Verify)
-		public.POST("/subgroups", subgroupHandler.CreateSubgroup)
 		public.GET("/forum", forumHandler.ListForumPosts)
 	}
 

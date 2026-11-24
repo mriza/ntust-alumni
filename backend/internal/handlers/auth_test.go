@@ -17,15 +17,19 @@ import (
 
 // fakeDB implements enough of db.CouchDB for auth handler tests
 type fakeDB struct {
-	alumni  map[string]*models.Alumni
-	byEmail map[string]*models.Alumni
-	nextID  int
+	alumni      map[string]*models.Alumni
+	byEmail     map[string]*models.Alumni
+	subgroups   map[string]*models.Subgroup
+	forumPosts  map[string]*models.ForumPost
+	nextID      int
 }
 
 func newFakeDB() *fakeDB {
 	return &fakeDB{
-		alumni:  make(map[string]*models.Alumni),
-		byEmail: make(map[string]*models.Alumni),
+		alumni:      make(map[string]*models.Alumni),
+		byEmail:     make(map[string]*models.Alumni),
+		subgroups:   make(map[string]*models.Subgroup),
+		forumPosts:  make(map[string]*models.ForumPost),
 	}
 }
 
@@ -79,13 +83,55 @@ func (f *fakeDB) FindAlumniByVerificationToken(ctx context.Context, token string
 	return nil, nil
 }
 
-func (f *fakeDB) GetSubgroup(ctx context.Context, id string) (*models.Subgroup, error) { return nil, nil }
-func (f *fakeDB) SaveSubgroup(ctx context.Context, s *models.Subgroup) error            { return nil }
-func (f *fakeDB) UpdateSubgroup(ctx context.Context, s *models.Subgroup) error         { return nil }
-func (f *fakeDB) DeleteSubgroup(ctx context.Context, id, rev string) error             { return nil }
-func (f *fakeDB) ListSubgroups(ctx context.Context) ([]models.Subgroup, error)         { return nil, nil }
-func (f *fakeDB) SaveForumPost(ctx context.Context, p *models.ForumPost) error         { return nil }
-func (f *fakeDB) ListForumPosts(ctx context.Context) ([]models.ForumPost, error)       { return nil, nil }
+func (f *fakeDB) GetSubgroup(ctx context.Context, id string) (*models.Subgroup, error) {
+	if s, ok := f.subgroups[id]; ok {
+		return s, nil
+	}
+	return nil, &errNotFound{}
+}
+
+func (f *fakeDB) SaveSubgroup(ctx context.Context, s *models.Subgroup) error {
+	f.nextID++
+	s.ID = string(rune('s' + f.nextID))
+	f.subgroups[s.ID] = s
+	return nil
+}
+
+func (f *fakeDB) UpdateSubgroup(ctx context.Context, s *models.Subgroup) error {
+	if _, ok := f.subgroups[s.ID]; !ok {
+		return &errNotFound{}
+	}
+	f.subgroups[s.ID] = s
+	return nil
+}
+
+func (f *fakeDB) DeleteSubgroup(ctx context.Context, id, rev string) error {
+	delete(f.subgroups, id)
+	return nil
+}
+
+func (f *fakeDB) ListSubgroups(ctx context.Context) ([]models.Subgroup, error) {
+	var result []models.Subgroup
+	for _, s := range f.subgroups {
+		result = append(result, *s)
+	}
+	return result, nil
+}
+
+func (f *fakeDB) SaveForumPost(ctx context.Context, p *models.ForumPost) error {
+	f.nextID++
+	p.ID = string(rune('f' + f.nextID))
+	f.forumPosts[p.ID] = p
+	return nil
+}
+
+func (f *fakeDB) ListForumPosts(ctx context.Context) ([]models.ForumPost, error) {
+	var result []models.ForumPost
+	for _, p := range f.forumPosts {
+		result = append(result, *p)
+	}
+	return result, nil
+}
 func (f *fakeDB) InitDatabase(ctx context.Context) error                               { return nil }
 
 // Compile-time check that fakeDB satisfies db.Store interface
