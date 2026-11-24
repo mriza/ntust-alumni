@@ -24,12 +24,23 @@ services:
       - COUCHDB_URL=http://admin:<COUCHDB_PASSWORD>@couchdb:5984
       - JWT_SECRET=<JWT_SECRET>
       - PORT=8080
-      - BREVO_API_KEY=
+      - BREVO_API_KEY=${BREVO_API_KEY:-}
       - BREVO_FROM_EMAIL=noreply@ntust-alumni.id
       - BREVO_FROM_NAME=Alumni NTUST Indonesia
     depends_on:
       - couchdb
     restart: unless-stopped
+
+  frontend:
+    image: nginx:alpine
+    container_name: ntust-frontend
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html
+    restart: unless-stopped
+    depends_on:
+      - backend
 
 volumes:
   couchdb-data:
