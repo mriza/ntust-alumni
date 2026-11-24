@@ -1,0 +1,32 @@
+version: "3.8"
+
+services:
+  couchdb:
+    image: couchdb:3.3
+    container_name: ntust-couchdb
+    ports:
+      - "5984:5984"
+    environment:
+      - COUCHDB_USER=admin
+      - COUCHDB_PASSWORD=<COUCHDB_PASSWORD>
+    volumes:
+      - couchdb-data:/opt/couchdb/data
+    command: >
+      -c couchdb_database_dir=/opt/couchdb/data
+      -c view_index_dir=/opt/couchdb/data
+
+  backend:
+    build: ./backend
+    container_name: ntust-backend
+    ports:
+      - "8080:8080"
+    environment:
+      - COUCHDB_URL=http://admin:<COUCHDB_PASSWORD>@couchdb:5984
+      - JWT_SECRET=<JWT_SECRET>
+      - PORT=8080
+    depends_on:
+      - couchdb
+    restart: unless-stopped
+
+volumes:
+  couchdb-data:
