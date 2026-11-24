@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"os"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"ntust-alumni/backend/internal/db"
@@ -21,6 +23,9 @@ func validateConfig() error {
 	return nil
 }
 
+// Package-level store untuk health check
+var dbStore db.Store
+
 func SetupRouter() *gin.Engine {
 	router := gin.Default()
 
@@ -36,7 +41,20 @@ func SetupRouter() *gin.Engine {
 
 	// Health check
 	router.GET("/health", func(c *gin.Context) {
-		c.JSON(200, gin.H{"status": "ok"})
+		start := time.Now()
+		if dbStore != nil {
+			if err := dbStore.Ping(); err != nil {
+				c.JSON(http.StatusServiceUnavailable, gin.H{
+					"status":  "error",
+					"couchdb": gin.H{"status": "error", "detail": err.Error()},
+				})
+				return
+			}
+		}
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"couchdb": gin.H{"status": "ok", "latency_ms": time.Since(start).Milliseconds()},
+		})
 	})
 
 	return router
@@ -67,6 +85,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Gagal koneksi CouchDB: %v", err)
 	}
+	dbStore = database
 
 	if err := database.InitDatabase(context.Background()); err != nil {
 		log.Fatalf("Gagal inisialisasi database: %v", err)

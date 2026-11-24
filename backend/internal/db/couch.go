@@ -33,6 +33,7 @@ type Store interface {
 	FindAlumniByVerificationToken(ctx context.Context, token string) (*models.Alumni, error)
 
 	InitDatabase(ctx context.Context) error
+	Ping() error
 }
 
 var _ Store = (*CouchDB)(nil)

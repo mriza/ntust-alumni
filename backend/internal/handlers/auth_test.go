@@ -135,6 +135,8 @@ func (f *fakeDB) ListForumPosts(ctx context.Context) ([]models.ForumPost, error)
 }
 func (f *fakeDB) InitDatabase(ctx context.Context) error                               { return nil }
 
+func (f *fakeDB) Ping() error                                                           { return nil }
+
 // Compile-time check that fakeDB satisfies db.Store interface
 var _ db.Store = (*fakeDB)(nil)
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,9 +22,16 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("expected status %d, got %d", http.StatusOK, w.Code)
 	}
 
-	expected := `{"status":"ok"}`
-	if w.Body.String() != expected {
-		t.Fatalf("expected body %q, got %q", expected, w.Body.String())
+	// Check response is valid JSON with status ok
+	var resp map[string]interface{}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("invalid JSON: %v, body: %s", err, w.Body.String())
+	}
+	if resp["status"] != "ok" {
+		t.Fatalf("expected status=ok, got %v", resp["status"])
+	}
+	if couchdb, ok := resp["couchdb"].(map[string]interface{}); !ok || couchdb["status"] != "ok" {
+		t.Errorf("expected couchdb status=ok")
 	}
 }
 
