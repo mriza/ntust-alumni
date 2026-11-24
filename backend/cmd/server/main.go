@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
 
@@ -11,6 +12,14 @@ import (
 	"ntust-alumni/backend/internal/handlers"
 	"ntust-alumni/backend/internal/middleware"
 )
+
+// validateConfig validates environment variables before starting the server.
+func validateConfig() error {
+	if os.Getenv("JWT_SECRET") == "" {
+		return errors.New("JWT_SECRET environment variable is required; refusing to start with insecure default")
+	}
+	return nil
+}
 
 func SetupRouter() *gin.Engine {
 	router := gin.Default()
@@ -26,15 +35,17 @@ func SetupRouter() *gin.Engine {
 func main() {
 	gin.SetMode(gin.DebugMode)
 
+	// Validasi konfigurasi sebelum mulai
+	if err := validateConfig(); err != nil {
+		log.Fatal(err)
+	}
+
 	couchURL := os.Getenv("COUCHDB_URL")
 	if couchURL == "" {
 		couchURL = "http://admin:<COUCHDB_PASSWORD>@localhost:5984"
 	}
 
 	jwtSecret := os.Getenv("JWT_SECRET")
-	if jwtSecret == "" {
-		jwtSecret = "<JWT_SECRET>"
-	}
 
 	port := os.Getenv("PORT")
 	if port == "" {
