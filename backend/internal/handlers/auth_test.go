@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -210,8 +211,12 @@ func TestRegisterRejectsDuplicateEmail(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(w, req)
 
-	if w.Code != http.StatusConflict {
-		t.Fatalf("expected 409, got %d", w.Code)
+	// Email sudah terdaftar: harus return 200 generik (anti-enumerasi)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 for duplicate email (anti-enumeration), got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "check your inbox") {
+		t.Errorf("expected generic message, got %s", w.Body.String())
 	}
 }
 

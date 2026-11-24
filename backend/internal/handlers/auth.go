@@ -28,10 +28,11 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
-	// Cek apakah email sudah terdaftar
+	// Cek apakah email sudah terdaftar — kembalikan generic response agar
+	// tidak bisa diakses dari luar untuk enumerasi email
 	existing, _ := h.database.FindAlumniByEmail(c.Request.Context(), req.Email)
 	if existing != nil {
-		c.JSON(http.StatusConflict, models.ErrorResponse{Error: "Email sudah terdaftar"})
+		c.JSON(http.StatusOK, models.SuccessResponse{Message: "Registration request will be processed. Please check your inbox."})
 		return
 	}
 
