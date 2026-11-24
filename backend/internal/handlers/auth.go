@@ -12,11 +12,12 @@ import (
 )
 
 type AuthHandler struct {
-	database db.Store
+	database    db.Store
+	rateLimiter *RateLimiter
 }
 
 func NewAuthHandler(database db.Store) *AuthHandler {
-	return &AuthHandler{database: database}
+	return &AuthHandler{database: database, rateLimiter: NewRateLimiter()}
 }
 
 // Register pendaftaran alumni baru (email bebas, status pending)
@@ -71,6 +72,17 @@ func (h *AuthHandler) Login(c *gin.Context) {
 	var req models.AuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid"})
+		return
+	}
+
+	// Rate limit: 5 per email/IP per 10 min, mengembalikan 429 setelah limit
+	ip := c.ClientIP()
+	if allowed, _ := h.rateLimiter.CheckAndIncrement("login-ip:"+ip, 10); !allowed {
+		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak login. Coba lagi dalam 10 menit"})
+		return
+	}
+	if allowed, _ := h.rateLimiter.CheckAndIncrement("login-email:"+req.Email, 5); !allowed {
+		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Akun terlalu sering login. Coba lagi dalam 5 menit"})
 		return
 	}
 
