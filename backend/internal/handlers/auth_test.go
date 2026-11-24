@@ -60,9 +60,16 @@ func (f *fakeDB) UpdateAlumni(ctx context.Context, a *models.Alumni) error {
 	return nil
 }
 
-func (f *fakeDB) ListAlumni(ctx context.Context) ([]models.Alumni, error) {
+func (f *fakeDB) ListAlumni(ctx context.Context, search, wilayah, jurusan string, limit, offset int) ([]models.Alumni, error) {
 	var result []models.Alumni
 	for _, a := range f.alumni {
+		// Simple in-memory filter
+		if wilayah != "" && a.Wilayah != wilayah {
+			continue
+		}
+		if jurusan != "" && a.Jurusan != jurusan {
+			continue
+		}
 		result = append(result, *a)
 	}
 	return result, nil

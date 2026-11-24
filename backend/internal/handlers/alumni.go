@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -17,9 +18,32 @@ func NewAlumniHandler(database db.Store) *AlumniHandler {
 	return &AlumniHandler{database: database}
 }
 
-// ListAlumni mengembalikan daftar semua alumni VERIFIED (direktori)
+// ListAlumni mengembalikan daftar alumni VERIFIED (direktori) dengan search & filter
 func (h *AlumniHandler) ListAlumni(c *gin.Context) {
-	alumni, err := h.database.ListAlumni(c.Request.Context())
+	// Parsing query params: q=search, wilayah, jurusan, page, limit
+	query := c.Query("q")
+	wilayah := c.Query("wilayah")
+	jurusan := c.Query("jurusan")
+	pageStr := c.Query("page")
+	limitStr := c.Query("limit")
+
+	page := 1
+	if pageStr != "" {
+		page, _ = strconv.Atoi(pageStr)
+		if page < 1 {
+			page = 1
+		}
+	}
+	limit := 50
+	if limitStr != "" {
+		limit, _ = strconv.Atoi(limitStr)
+		if limit <= 0 || limit > 200 {
+			limit = 50
+		}
+	}
+	offset := (page - 1) * limit
+
+	alumni, err := h.database.ListAlumni(c.Request.Context(), query, wilayah, jurusan, limit, offset)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal mengambil data alumni"})
 		return
@@ -35,7 +59,11 @@ func (h *AlumniHandler) ListAlumni(c *gin.Context) {
 
 	c.JSON(http.StatusOK, models.SuccessResponse{
 		Message: "Data alumni berhasil diambil",
-		Data:    result,
+		Data: gin.H{
+			"alumni": result,
+			"page":   page,
+			"limit":  limit,
+		},
 	})
 }
 

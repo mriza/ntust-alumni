@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"ntust-alumni/backend/internal/models"
@@ -18,7 +19,7 @@ type Store interface {
 	GetAlumni(ctx context.Context, id string) (*models.Alumni, error)
 	SaveAlumni(ctx context.Context, a *models.Alumni) error
 	UpdateAlumni(ctx context.Context, a *models.Alumni) error
-	ListAlumni(ctx context.Context) ([]models.Alumni, error)
+	ListAlumni(ctx context.Context, search string, wilayah string, jurusan string, limit int, offset int) ([]models.Alumni, error)
 	FindAlumniByEmail(ctx context.Context, email string) (*models.Alumni, error)
 
 	GetSubgroup(ctx context.Context, id string) (*models.Subgroup, error)
@@ -125,7 +126,32 @@ func (c *CouchDB) UpdateAlumni(ctx context.Context, a *models.Alumni) error {
 	return nil
 }
 
-func (c *CouchDB) ListAlumni(ctx context.Context) ([]models.Alumni, error) {
+func (c *CouchDB) ListAlumni(ctx context.Context, search, wilayah, jurusan string, limit, offset int) ([]models.Alumni, error) {
+	// Build selector for CouchDB _find with filters
+	selector := map[string]interface{}{}
+	if wilayah != "" {
+		selector["wilayah"] = wilayah
+	}
+	if jurusan != "" {
+		selector["jurusan"] = jurusan
+	}
+	if len(selector) > 0 {
+		var result struct {
+			Docs []models.Alumni `json:"docs"`
+		}
+		if err := c.findDocs(ctx, "alumni", selector, &result); err != nil {
+			return nil, err
+		}
+		var alumni []models.Alumni
+		for _, doc := range result.Docs {
+			if applyAlumniSearch(&doc, search) {
+				alumni = append(alumni, doc)
+			}
+		}
+		return paginateAlumni(alumni, limit, offset), nil
+	}
+
+	// Fallback: scan all when no selector filters
 	var result struct {
 		Rows []struct {
 			Doc models.Alumni `json:"doc"`
@@ -136,9 +162,40 @@ func (c *CouchDB) ListAlumni(ctx context.Context) ([]models.Alumni, error) {
 	}
 	var alumni []models.Alumni
 	for _, row := range result.Rows {
-		alumni = append(alumni, row.Doc)
+		a := row.Doc
+		if applyAlumniSearch(&a, search) {
+			alumni = append(alumni, a)
+		}
 	}
-	return alumni, nil
+	return paginateAlumni(alumni, limit, offset), nil
+}
+
+func applyAlumniSearch(a *models.Alumni, q string) bool {
+	if q == "" {
+		return true
+	}
+	q = strings.ToLower(q)
+	return strings.Contains(strings.ToLower(a.Nama), q) ||
+		strings.Contains(strings.ToLower(a.Nim), q) ||
+		strings.Contains(strings.ToLower(a.Wilayah), q) ||
+		strings.Contains(strings.ToLower(a.Jurusan), q)
+}
+
+func paginateAlumni(list []models.Alumni, limit, offset int) []models.Alumni {
+	if offset < 0 {
+		offset = 0
+	}
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset >= len(list) {
+		return []models.Alumni{}
+	}
+	end := offset + limit
+	if end > len(list) {
+		end = len(list)
+	}
+	return list[offset:end]
 }
 
 func (c *CouchDB) FindAlumniByEmail(ctx context.Context, email string) (*models.Alumni, error) {

@@ -126,7 +126,7 @@ func TestListAlumniParsesRows(t *testing.T) {
 	defer srv.Close()
 
 	c := &CouchDB{baseURL: srv.URL, client: srv.Client()}
-	alumni, err := c.ListAlumni(context.Background())
+	alumni, err := c.ListAlumni(context.Background(), "", "", "", 10, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
