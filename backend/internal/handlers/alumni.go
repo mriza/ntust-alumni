@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"encoding/base64"
+	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -148,6 +151,35 @@ type UpdateAlumniRequest struct {
 	Wilayah          string                    `json:"wilayah,omitempty"`
 }
 
+const maxPhotoBytes = 2 * 1024 * 1024 // 2 MB
+
+// validatePhotoHeader validates base64 image data, returns data URL or error
+func validatePhoto(fotoB64 string) error {
+	if fotoB64 == "" {
+		return nil
+	}
+	// Check for data URL prefix
+	if !strings.HasPrefix(fotoB64, "data:image/") {
+		return errors.New("Foto harus diupload sebagai data URL (data:image/...)")
+	}
+	if strings.HasPrefix(fotoB64, "data:image/svg") {
+		return errors.New("Format SVG tidak didukung")
+	}
+	// Extract base64 and check size
+	parts := strings.SplitN(fotoB64, ",", 2)
+	if len(parts) != 2 || parts[1] == "" {
+		return errors.New("Format foto tidak valid")
+	}
+	decoded, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return errors.New("Foto tidak dapat didecode")
+	}
+	if len(decoded) > maxPhotoBytes {
+		return errors.New("Foto terlalu besar (maksimal 2 MB)")
+	}
+	return nil
+}
+
 // UpdateAlumni memperbarui profil alumni (sendiri atau admin)
 func (h *AlumniHandler) UpdateAlumni(c *gin.Context) {
 	id := c.Param("id")
@@ -163,6 +195,12 @@ func (h *AlumniHandler) UpdateAlumni(c *gin.Context) {
 	var req UpdateAlumniRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid: " + err.Error()})
+		return
+	}
+
+	// Validasi foto profil (jika diupload)
+	if err := validatePhoto(req.FotoProfil); err != nil {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: err.Error()})
 		return
 	}
 
