@@ -34,7 +34,7 @@ type Alumni struct {
 	Rev             string       `json:"rev,omitempty"`
 	Nama            string       `json:"nama"`
 	Email           string       `json:"email"`
-	PasswordHash    string       `json:"-"`
+	PasswordHash    string       `json:"password,omitempty"`
 	Nim             string       `json:"nim"`
 	Jurusan         string       `json:"jurusan,omitempty"`
 	Status          string       `json:"status"` // pending, verified
