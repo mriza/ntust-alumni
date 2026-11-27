@@ -30,8 +30,8 @@ type PendidikanNTUST struct {
 
 // Alumni mewakili data anggota alumni NTUST
 type Alumni struct {
-	ID              string       `json:"id,omitempty"`
-	Rev             string       `json:"rev,omitempty"`
+	ID              string       `json:"_id,omitempty"`
+	Rev             string       `json:"_rev,omitempty"`
 	Nama            string       `json:"nama"`
 	Email           string       `json:"email"`
 	PasswordHash    string       `json:"password,omitempty"`
