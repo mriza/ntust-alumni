@@ -1,0 +1,16 @@
+# Secret & environment files
+.env
+.env.*
+!.env.example
+secrets/
+*.secret
+*.key
+*.pem
+
+# Local agent / review artifacts
+.superpowers/
+
+# Build & runtime artifacts
+backend/server
+backend/seed
+*.log

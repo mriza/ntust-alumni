@@ -3,10 +3,12 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"ntust-alumni/backend/internal/models"
 )
@@ -287,12 +289,14 @@ func TestSaveForumPost(t *testing.T) {
 
 func TestAlumniModelJSONExcludesPassword(t *testing.T) {
 	a := models.Alumni{
-		ID:           "id1",
-		Nama:         "Test",
-		Email:        "test@example.com",
-		PasswordHash: "secret-hash",
-		Role:         "member",
-		Status:       "pending",
+		ID:                "id1",
+		Nama:              "Test",
+		Email:             "test@example.com",
+		PasswordHash:      "secret-hash",
+		OtpHash:           "secret-otp",
+		VerificationToken: "secret-tok",
+		Role:              "member",
+		Status:            "pending",
 	}
 	data, err := json.Marshal(a)
 	if err != nil {
@@ -302,8 +306,225 @@ func TestAlumniModelJSONExcludesPassword(t *testing.T) {
 	if strings.Contains(body, "PasswordHash") || strings.Contains(body, "secret-hash") {
 		t.Error("PasswordHash should be excluded from JSON (json:\"-\")")
 	}
+	if strings.Contains(body, "secret-otp") || strings.Contains(body, "secret-tok") {
+		t.Error("OtpHash and VerificationToken should be excluded from JSON (json:\"-\")")
+	}
 	if !strings.Contains(body, `"nama":"Test"`) {
 		t.Errorf("expected nama in JSON, got %s", body)
+	}
+}
+
+func TestSaveAndGetAlumniPersistsAuthAndVerificationFields(t *testing.T) {
+	var savedBody string
+	exp := time.Now().Add(15 * time.Minute).UTC().Truncate(time.Second)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost && r.URL.Path == "/alumni" {
+			b, _ := io.ReadAll(r.Body)
+			savedBody = string(b)
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]string{"id": "alum1", "rev": "1-rev"})
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/alumni/alum1" {
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, savedBody)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := &CouchDB{baseURL: srv.URL, client: srv.Client()}
+	a := &models.Alumni{
+		Nama:              "Budi",
+		Email:             "budi@example.com",
+		PasswordHash:      "hashed-pw",
+		OtpHash:           "hashed-otp",
+		OtpExpiresAt:      exp,
+		VerificationToken: "tok-123",
+		TokenExpiresAt:    exp,
+		Role:              "member",
+		Status:            "pending",
+	}
+	if err := c.SaveAlumni(context.Background(), a); err != nil {
+		t.Fatalf("SaveAlumni error: %v", err)
+	}
+	if !strings.Contains(savedBody, `"password_hash":"hashed-pw"`) {
+		t.Errorf("expected password_hash in CouchDB payload, got %s", savedBody)
+	}
+	if !strings.Contains(savedBody, `"otp_hash":"hashed-otp"`) || !strings.Contains(savedBody, `"verification_token":"tok-123"`) {
+		t.Errorf("expected otp_hash and verification_token in CouchDB payload, got %s", savedBody)
+	}
+
+	got, err := c.GetAlumni(context.Background(), "alum1")
+	if err != nil {
+		t.Fatalf("GetAlumni error: %v", err)
+	}
+	if got.PasswordHash != "hashed-pw" || got.OtpHash != "hashed-otp" || got.VerificationToken != "tok-123" {
+		t.Errorf("expected round-tripped secrets, got %+v", got)
+	}
+}
+
+func TestGetAndListSubgroupDecodesIDAndRev(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path == "/subgroups/sub1" {
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"_id":     "sub1",
+				"_rev":    "2-rev",
+				"nama":    "Jakarta",
+				"wilayah": "Jakarta",
+			})
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"rows": []interface{}{
+				map[string]interface{}{
+					"doc": map[string]interface{}{
+						"_id":     "sub1",
+						"_rev":    "2-rev",
+						"nama":    "Jakarta",
+						"wilayah": "Jakarta",
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &CouchDB{baseURL: srv.URL, client: srv.Client()}
+	sg, err := c.GetSubgroup(context.Background(), "sub1")
+	if err != nil {
+		t.Fatalf("GetSubgroup error: %v", err)
+	}
+	if sg.ID != "sub1" || sg.Rev != "2-rev" {
+		t.Errorf("expected ID=sub1 Rev=2-rev, got ID=%s Rev=%s", sg.ID, sg.Rev)
+	}
+
+	list, err := c.ListSubgroups(context.Background())
+	if err != nil || len(list) != 1 || list[0].ID != "sub1" || list[0].Rev != "2-rev" {
+		t.Errorf("unexpected ListSubgroups result: %+v, err=%v", list, err)
+	}
+}
+
+func TestSubgroupPengurusRoundTrip(t *testing.T) {
+	var savedDoc string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodPost && r.URL.Path == "/subgroups" {
+			b, _ := io.ReadAll(r.Body)
+			savedDoc = string(b)
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]string{"id": "sg-jabo", "rev": "1-r"})
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/subgroups/sg-jabo" {
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, savedDoc)
+			return
+		}
+		if r.Method == http.MethodGet && r.URL.Path == "/subgroups/_all_docs" {
+			w.WriteHeader(http.StatusOK)
+			io.WriteString(w, `{"rows":[{"doc":`+savedDoc+`}]}`)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	c := &CouchDB{baseURL: srv.URL, client: srv.Client()}
+	sg := &models.Subgroup{
+		Nama:      "Ikatan Alumni NTUST Wilayah Jabodetabek",
+		Wilayah:   "Jabodetabek",
+		Deskripsi: "Pengurus Jabodetabek",
+		AdminID:   "u-admin",
+		Pengurus: []models.PengurusWilayah{
+			{Jabatan: "Ketua Wilayah", Nama: "Budi Pratama", AlumniID: "u-admin"},
+			{Jabatan: "Sekretaris", Nama: "Andi Wijaya", AlumniID: "u-sek"},
+		},
+	}
+	if err := c.SaveSubgroup(context.Background(), sg); err != nil {
+		t.Fatalf("SaveSubgroup error: %v", err)
+	}
+	got, err := c.GetSubgroup(context.Background(), "sg-jabo")
+	if err != nil {
+		t.Fatalf("GetSubgroup error: %v", err)
+	}
+	if len(got.Pengurus) != 2 || got.Pengurus[0].Jabatan != "Ketua Wilayah" || got.Pengurus[1].Nama != "Andi Wijaya" {
+		t.Errorf("expected 2 pengurus round-tripped, got %+v", got.Pengurus)
+	}
+	list, err := c.ListSubgroups(context.Background())
+	if err != nil || len(list) != 1 || len(list[0].Pengurus) != 2 {
+		t.Errorf("expected ListSubgroups to include 2 pengurus, got %+v, err=%v", list, err)
+	}
+}
+
+func TestListForumPostsDecodesIDAndRev(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"rows": []interface{}{
+				map[string]interface{}{
+					"doc": map[string]interface{}{
+						"_id":          "fp1",
+						"_rev":         "1-fp",
+						"judul":        "Halo",
+						"isi":          "Konten",
+						"penulis_id":   "u1",
+						"penulis_nama": "Budi",
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &CouchDB{baseURL: srv.URL, client: srv.Client()}
+	posts, err := c.ListForumPosts(context.Background())
+	if err != nil || len(posts) != 1 || posts[0].ID != "fp1" || posts[0].Rev != "1-fp" {
+		t.Errorf("unexpected ListForumPosts result: %+v, err=%v", posts, err)
+	}
+}
+
+func TestListAlumniSearchMatchesPekerjaan(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"rows": []interface{}{
+				map[string]interface{}{
+					"doc": map[string]interface{}{
+						"_id":    "id1",
+						"nama":   "Alice",
+						"email":  "alice@example.com",
+						"status": "verified",
+						"pekerjaan": map[string]interface{}{
+							"institusi": "PT Teknologi Nusantara",
+							"jabatan":   "Software Engineer",
+						},
+					},
+				},
+				map[string]interface{}{
+					"doc": map[string]interface{}{
+						"_id":    "id2",
+						"nama":   "Bob",
+						"email":  "bob@example.com",
+						"status": "verified",
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	c := &CouchDB{baseURL: srv.URL, client: srv.Client()}
+	got, err := c.ListAlumni(context.Background(), "teknologi", "", "", 0, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 1 || got[0].Nama != "Alice" {
+		t.Errorf("expected only Alice matching pekerjaan, got %+v", got)
 	}
 }
 

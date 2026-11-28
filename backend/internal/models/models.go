@@ -26,19 +26,20 @@ type PendidikanNTUST struct {
 	TahunLulus int    `json:"tahun_lulus_studi,omitempty"`
 	Supervisor string `json:"supervisor,omitempty"`
 	Fakultas   string `json:"fakultas,omitempty"`
+	Jurusan    string `json:"jurusan,omitempty"`
 }
 
 // Alumni mewakili data anggota alumni NTUST
 type Alumni struct {
-	ID              string       `json:"_id,omitempty"`
-	Rev             string       `json:"_rev,omitempty"`
-	Nama            string       `json:"nama"`
-	Email           string       `json:"email"`
-	PasswordHash    string       `json:"password,omitempty"`
-	Nim             string       `json:"nim"`
-	Jurusan         string       `json:"jurusan,omitempty"`
-	Status          string       `json:"status"` // pending, verified
-	EmailNtust      string       `json:"email_ntust,omitempty"`
+	ID           string `json:"id,omitempty"`
+	Rev          string `json:"rev,omitempty"`
+	Nama         string `json:"nama"`
+	Email        string `json:"email"`
+	PasswordHash string `json:"-"`
+	Nim          string `json:"nim"`
+	Jurusan      string `json:"jurusan,omitempty"`
+	Status       string `json:"status"` // pending, verified
+	EmailNtust   string `json:"email_ntust,omitempty"`
 
 	// Kontak pribadi (dapat diedit oleh alumni)
 	NoTelp          string       `json:"no_telp,omitempty"`
@@ -63,31 +64,41 @@ type Alumni struct {
 	Role        string `json:"role"` // member, regional_admin, super_admin
 
 	// OTP & verifikasi (private)
-	OtpHash          string    `json:"-"`
-	OtpExpiresAt     time.Time `json:"-"`
-	VerificationToken string   `json:"-"`
-	TokenExpiresAt   time.Time `json:"-"`
+	OtpHash             string    `json:"-"`
+	OtpExpiresAt        time.Time `json:"-"`
+	VerificationToken   string    `json:"-"`
+	TokenExpiresAt      time.Time `json:"-"`
+	VerificationChannel string    `json:"-"`
+	VerificationTarget  string    `json:"-"`
 
 	DibuatPada  time.Time `json:"dibuat_pada,omitempty"`
 	Diperbarui  time.Time `json:"diperbarui,omitempty"`
+}
+
+// PengurusWilayah merepresentasikan jabatan pengurus pada subgroup wilayah
+type PengurusWilayah struct {
+	Jabatan  string `json:"jabatan"`
+	Nama     string `json:"nama"`
+	AlumniID string `json:"alumni_id,omitempty"`
 }
 
 // Subgroup mewakili ikatan alumni per wilayah
 type Subgroup struct {
-	ID          string    `json:"id,omitempty" db:"_id,omitempty"`
-	Rev         string    `json:"rev,omitempty" db:"_rev,omitempty"`
-	Nama        string    `json:"nama"`        // misal: IKATAN ALUMNI NTUST WILAYAH JAKARTA
-	Wilayah     string    `json:"wilayah"`     // misal: Jakarta, Bandung, Surabaya
-	Deskripsi   string    `json:"deskripsi"`
-	AdminID     string    `json:"admin_id"`    // ID alumni yang menjadi admin wilayah
-	DibuatPada  time.Time `json:"dibuat_pada,omitempty"`
-	Diperbarui  time.Time `json:"diperbarui,omitempty"`
+	ID         string            `json:"id,omitempty"`
+	Rev        string            `json:"rev,omitempty"`
+	Nama       string            `json:"nama"`     // misal: IKATAN ALUMNI NTUST WILAYAH JABODETABEK
+	Wilayah    string            `json:"wilayah"`  // misal: Jabodetabek, Bandung, Surabaya
+	Deskripsi  string            `json:"deskripsi"`
+	AdminID    string            `json:"admin_id"` // ID alumni yang menjadi admin wilayah
+	Pengurus   []PengurusWilayah `json:"pengurus,omitempty"`
+	DibuatPada time.Time         `json:"dibuat_pada,omitempty"`
+	Diperbarui time.Time         `json:"diperbarui,omitempty"`
 }
 
 // ForumPost mewakili postingan di channel forum
 type ForumPost struct {
-	ID          string    `json:"id,omitempty" db:"_id,omitempty"`
-	Rev         string    `json:"rev,omitempty" db:"_rev,omitempty"`
+	ID          string    `json:"id,omitempty"`
+	Rev         string    `json:"rev,omitempty"`
 	Judul       string    `json:"judul"`
 	Isi         string    `json:"isi"`
 	PenulisID   string    `json:"penulis_id"`
@@ -117,10 +128,11 @@ type RegisterRequest struct {
 
 // SubgroupRequest untuk membuat/mengedit subgroup
 type SubgroupRequest struct {
-	Nama       string `json:"nama"`
-	Wilayah    string `json:"wilayah"`
-	Deskripsi  string `json:"deskripsi"`
-	AdminID    string `json:"admin_id"`
+	Nama      string            `json:"nama"`
+	Wilayah   string            `json:"wilayah"`
+	Deskripsi string            `json:"deskripsi"`
+	AdminID   string            `json:"admin_id"`
+	Pengurus  []PengurusWilayah `json:"pengurus,omitempty"`
 }
 
 // ForumPostRequest untuk membuat postingan forum

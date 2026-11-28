@@ -61,7 +61,7 @@ Create `backend/go.mod` with module `ntust-alumni/backend`, Go 1.22, dependencie
 
 - [ ] **Step 2: Create `docker-compose.yml`**
 
-CouchDB service (image `couchdb:3.3`, env `COUCHDB_USER=admin`, `COUCHDB_PASSWORD=<COUCHDB_PASSWORD>`, port 5984) and backend service (build from `./backend`, port 8080, env `COUCHDB_URL`, `JWT_SECRET`, `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`, depends_on couchdb).
+CouchDB service (image `couchdb:3.3`, env `COUCHDB_USER`, `COUCHDB_PASSWORD` from `.env`, port 5984) and backend service (build from `./backend`, port 8080, env `COUCHDB_URL`, `JWT_SECRET`, `BREVO_API_KEY`, `BREVO_FROM_EMAIL`, `BREVO_FROM_NAME`, depends_on couchdb).
 
 - [ ] **Step 3: Create `backend/Dockerfile`**
 

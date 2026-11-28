@@ -97,18 +97,217 @@ func (c *CouchDB) InitDatabase(ctx context.Context) error {
 	return nil
 }
 
+// --- CouchDB Wire Documents ---
+
+type couchAlumniDoc struct {
+	ID               string                  `json:"_id,omitempty"`
+	Rev              string                  `json:"_rev,omitempty"`
+	Nama             string                  `json:"nama"`
+	Email            string                  `json:"email"`
+	PasswordHash     string                  `json:"password_hash,omitempty"`
+	PasswordLegacy   string                  `json:"password,omitempty"`
+	Nim              string                  `json:"nim"`
+	Jurusan          string                  `json:"jurusan,omitempty"`
+	Status           string                  `json:"status"`
+	EmailNtust       string                  `json:"email_ntust,omitempty"`
+	NoTelp           string                  `json:"no_telp,omitempty"`
+	NoWA             string                  `json:"no_wa,omitempty"`
+	Telegram         string                  `json:"telegram,omitempty"`
+	Sosmed           *models.Sosmed          `json:"sosmed,omitempty"`
+	FotoProfil       string                  `json:"foto_profil,omitempty"`
+	LinkedIn         string                  `json:"linkedin,omitempty"`
+	BidangKeahianan  []string                `json:"bidang_keahlian,omitempty"`
+	PreferensiKontak string                  `json:"preferensi_kontak,omitempty"`
+	StatusKeaktifan  string                  `json:"status_keaktifan,omitempty"`
+	Pekerjaan        *models.Pekerjaan       `json:"pekerjaan,omitempty"`
+	PendidikanNTUST  *models.PendidikanNTUST `json:"pendidikan_ntust,omitempty"`
+	Wilayah          string                  `json:"wilayah,omitempty"`
+	SubgroupID       string                  `json:"subgroup_id,omitempty"`
+	Role             string                  `json:"role"`
+	OtpHash             string    `json:"otp_hash,omitempty"`
+	OtpExpiresAt        time.Time `json:"otp_expires_at,omitempty"`
+	VerificationToken   string    `json:"verification_token,omitempty"`
+	TokenExpiresAt      time.Time `json:"token_expires_at,omitempty"`
+	VerificationChannel string    `json:"verification_channel,omitempty"`
+	VerificationTarget  string    `json:"verification_target,omitempty"`
+	DibuatPada          time.Time `json:"dibuat_pada,omitempty"`
+	Diperbarui       time.Time               `json:"diperbarui,omitempty"`
+}
+
+func toCouchAlumniDoc(a *models.Alumni) couchAlumniDoc {
+	return couchAlumniDoc{
+		ID:                a.ID,
+		Rev:               a.Rev,
+		Nama:              a.Nama,
+		Email:             a.Email,
+		PasswordHash:      a.PasswordHash,
+		Nim:               a.Nim,
+		Jurusan:           a.Jurusan,
+		Status:            a.Status,
+		EmailNtust:        a.EmailNtust,
+		NoTelp:            a.NoTelp,
+		NoWA:              a.NoWA,
+		Telegram:          a.Telegram,
+		Sosmed:            a.Sosmed,
+		FotoProfil:        a.FotoProfil,
+		LinkedIn:          a.LinkedIn,
+		BidangKeahianan:   a.BidangKeahianan,
+		PreferensiKontak:  a.PreferensiKontak,
+		StatusKeaktifan:   a.StatusKeaktifan,
+		Pekerjaan:         a.Pekerjaan,
+		PendidikanNTUST:   a.PendidikanNTUST,
+		Wilayah:           a.Wilayah,
+		SubgroupID:        a.SubgroupID,
+		Role:              a.Role,
+		OtpHash:             a.OtpHash,
+		OtpExpiresAt:        a.OtpExpiresAt,
+		VerificationToken:   a.VerificationToken,
+		TokenExpiresAt:      a.TokenExpiresAt,
+		VerificationChannel: a.VerificationChannel,
+		VerificationTarget:  a.VerificationTarget,
+		DibuatPada:          a.DibuatPada,
+		Diperbarui:        a.Diperbarui,
+	}
+}
+
+func fromCouchAlumniDoc(doc couchAlumniDoc) models.Alumni {
+	pwHash := doc.PasswordHash
+	if pwHash == "" && doc.PasswordLegacy != "" {
+		pwHash = doc.PasswordLegacy
+	}
+	return models.Alumni{
+		ID:                doc.ID,
+		Rev:               doc.Rev,
+		Nama:              doc.Nama,
+		Email:             doc.Email,
+		PasswordHash:      pwHash,
+		Nim:               doc.Nim,
+		Jurusan:           doc.Jurusan,
+		Status:            doc.Status,
+		EmailNtust:        doc.EmailNtust,
+		NoTelp:            doc.NoTelp,
+		NoWA:              doc.NoWA,
+		Telegram:          doc.Telegram,
+		Sosmed:            doc.Sosmed,
+		FotoProfil:        doc.FotoProfil,
+		LinkedIn:          doc.LinkedIn,
+		BidangKeahianan:   doc.BidangKeahianan,
+		PreferensiKontak:  doc.PreferensiKontak,
+		StatusKeaktifan:   doc.StatusKeaktifan,
+		Pekerjaan:         doc.Pekerjaan,
+		PendidikanNTUST:   doc.PendidikanNTUST,
+		Wilayah:           doc.Wilayah,
+		SubgroupID:        doc.SubgroupID,
+		Role:              doc.Role,
+		OtpHash:             doc.OtpHash,
+		OtpExpiresAt:        doc.OtpExpiresAt,
+		VerificationToken:   doc.VerificationToken,
+		TokenExpiresAt:      doc.TokenExpiresAt,
+		VerificationChannel: doc.VerificationChannel,
+		VerificationTarget:  doc.VerificationTarget,
+		DibuatPada:          doc.DibuatPada,
+		Diperbarui:        doc.Diperbarui,
+	}
+}
+
+type couchSubgroupDoc struct {
+	ID         string                   `json:"_id,omitempty"`
+	Rev        string                   `json:"_rev,omitempty"`
+	Nama       string                   `json:"nama"`
+	Wilayah    string                   `json:"wilayah"`
+	Deskripsi  string                   `json:"deskripsi"`
+	AdminID    string                   `json:"admin_id"`
+	Pengurus   []models.PengurusWilayah `json:"pengurus,omitempty"`
+	DibuatPada time.Time                `json:"dibuat_pada,omitempty"`
+	Diperbarui time.Time                `json:"diperbarui,omitempty"`
+}
+
+func toCouchSubgroupDoc(s *models.Subgroup) couchSubgroupDoc {
+	return couchSubgroupDoc{
+		ID:         s.ID,
+		Rev:        s.Rev,
+		Nama:       s.Nama,
+		Wilayah:    s.Wilayah,
+		Deskripsi:  s.Deskripsi,
+		AdminID:    s.AdminID,
+		Pengurus:   s.Pengurus,
+		DibuatPada: s.DibuatPada,
+		Diperbarui: s.Diperbarui,
+	}
+}
+
+func fromCouchSubgroupDoc(doc couchSubgroupDoc) models.Subgroup {
+	return models.Subgroup{
+		ID:         doc.ID,
+		Rev:        doc.Rev,
+		Nama:       doc.Nama,
+		Wilayah:    doc.Wilayah,
+		Deskripsi:  doc.Deskripsi,
+		AdminID:    doc.AdminID,
+		Pengurus:   doc.Pengurus,
+		DibuatPada: doc.DibuatPada,
+		Diperbarui: doc.Diperbarui,
+	}
+}
+
+type couchForumPostDoc struct {
+	ID          string    `json:"_id,omitempty"`
+	Rev         string    `json:"_rev,omitempty"`
+	Judul       string    `json:"judul"`
+	Isi         string    `json:"isi"`
+	PenulisID   string    `json:"penulis_id"`
+	PenulisNama string    `json:"penulis_nama"`
+	Wilayah     string    `json:"wilayah,omitempty"`
+	DibuatPada  time.Time `json:"dibuat_pada,omitempty"`
+	Diperbarui  time.Time `json:"diperbarui,omitempty"`
+}
+
+func toCouchForumPostDoc(p *models.ForumPost) couchForumPostDoc {
+	return couchForumPostDoc{
+		ID:          p.ID,
+		Rev:         p.Rev,
+		Judul:       p.Judul,
+		Isi:         p.Isi,
+		PenulisID:   p.PenulisID,
+		PenulisNama: p.PenulisNama,
+		Wilayah:     p.Wilayah,
+		DibuatPada:  p.DibuatPada,
+		Diperbarui:  p.Diperbarui,
+	}
+}
+
+func fromCouchForumPostDoc(doc couchForumPostDoc) models.ForumPost {
+	return models.ForumPost{
+		ID:          doc.ID,
+		Rev:         doc.Rev,
+		Judul:       doc.Judul,
+		Isi:         doc.Isi,
+		PenulisID:   doc.PenulisID,
+		PenulisNama: doc.PenulisNama,
+		Wilayah:     doc.Wilayah,
+		DibuatPada:  doc.DibuatPada,
+		Diperbarui:  doc.Diperbarui,
+	}
+}
+
 // --- Alumni ---
 
 func (c *CouchDB) GetAlumni(ctx context.Context, id string) (*models.Alumni, error) {
-	var a models.Alumni
-	if err := c.getDoc(ctx, "alumni", id, &a); err != nil {
+	var doc couchAlumniDoc
+	if err := c.getDoc(ctx, "alumni", id, &doc); err != nil {
 		return nil, err
 	}
+	a := fromCouchAlumniDoc(doc)
 	return &a, nil
 }
 
 func (c *CouchDB) SaveAlumni(ctx context.Context, a *models.Alumni) error {
-	id, rev, err := c.postDoc(ctx, "alumni", a)
+	now := time.Now().UTC()
+	if a.DibuatPada.IsZero() {
+		a.DibuatPada = now
+	}
+	a.Diperbarui = now
+	id, rev, err := c.postDoc(ctx, "alumni", toCouchAlumniDoc(a))
 	if err != nil {
 		return err
 	}
@@ -118,7 +317,8 @@ func (c *CouchDB) SaveAlumni(ctx context.Context, a *models.Alumni) error {
 }
 
 func (c *CouchDB) UpdateAlumni(ctx context.Context, a *models.Alumni) error {
-	rev, err := c.putDoc(ctx, "alumni", a.ID, a.Rev, a)
+	a.Diperbarui = time.Now().UTC()
+	rev, err := c.putDoc(ctx, "alumni", a.ID, a.Rev, toCouchAlumniDoc(a))
 	if err != nil {
 		return err
 	}
@@ -137,15 +337,16 @@ func (c *CouchDB) ListAlumni(ctx context.Context, search, wilayah, jurusan strin
 	}
 	if len(selector) > 0 {
 		var result struct {
-			Docs []models.Alumni `json:"docs"`
+			Docs []couchAlumniDoc `json:"docs"`
 		}
 		if err := c.findDocs(ctx, "alumni", selector, &result); err != nil {
 			return nil, err
 		}
 		var alumni []models.Alumni
 		for _, doc := range result.Docs {
-			if applyAlumniSearch(&doc, search) {
-				alumni = append(alumni, doc)
+			a := fromCouchAlumniDoc(doc)
+			if applyAlumniSearch(&a, search) {
+				alumni = append(alumni, a)
 			}
 		}
 		return paginateAlumni(alumni, limit, offset), nil
@@ -154,7 +355,7 @@ func (c *CouchDB) ListAlumni(ctx context.Context, search, wilayah, jurusan strin
 	// Fallback: scan all when no selector filters
 	var result struct {
 		Rows []struct {
-			Doc models.Alumni `json:"doc"`
+			Doc couchAlumniDoc `json:"doc"`
 		} `json:"rows"`
 	}
 	if err := c.allDocs(ctx, "alumni", &result); err != nil {
@@ -162,7 +363,7 @@ func (c *CouchDB) ListAlumni(ctx context.Context, search, wilayah, jurusan strin
 	}
 	var alumni []models.Alumni
 	for _, row := range result.Rows {
-		a := row.Doc
+		a := fromCouchAlumniDoc(row.Doc)
 		if applyAlumniSearch(&a, search) {
 			alumni = append(alumni, a)
 		}
@@ -175,21 +376,33 @@ func applyAlumniSearch(a *models.Alumni, q string) bool {
 		return true
 	}
 	q = strings.ToLower(q)
-	return strings.Contains(strings.ToLower(a.Nama), q) ||
+	if strings.Contains(strings.ToLower(a.Nama), q) ||
+		strings.Contains(strings.ToLower(a.Email), q) ||
 		strings.Contains(strings.ToLower(a.Nim), q) ||
 		strings.Contains(strings.ToLower(a.Wilayah), q) ||
-		strings.Contains(strings.ToLower(a.Jurusan), q)
+		strings.Contains(strings.ToLower(a.Jurusan), q) {
+		return true
+	}
+	if a.Pekerjaan != nil && (strings.Contains(strings.ToLower(a.Pekerjaan.Institusi), q) ||
+		strings.Contains(strings.ToLower(a.Pekerjaan.Jabatan), q)) {
+		return true
+	}
+	if a.PendidikanNTUST != nil && (strings.Contains(strings.ToLower(a.PendidikanNTUST.Fakultas), q) ||
+		strings.Contains(strings.ToLower(a.PendidikanNTUST.Jurusan), q)) {
+		return true
+	}
+	return false
 }
 
 func paginateAlumni(list []models.Alumni, limit, offset int) []models.Alumni {
 	if offset < 0 {
 		offset = 0
 	}
-	if limit <= 0 {
-		limit = 50
-	}
 	if offset >= len(list) {
 		return []models.Alumni{}
+	}
+	if limit <= 0 {
+		return list[offset:]
 	}
 	end := offset + limit
 	if end > len(list) {
@@ -200,7 +413,7 @@ func paginateAlumni(list []models.Alumni, limit, offset int) []models.Alumni {
 
 func (c *CouchDB) FindAlumniByEmail(ctx context.Context, email string) (*models.Alumni, error) {
 	var result struct {
-		Docs []models.Alumni `json:"docs"`
+		Docs []couchAlumniDoc `json:"docs"`
 	}
 	if err := c.findDocs(ctx, "alumni", map[string]interface{}{"email": email}, &result); err != nil {
 		return nil, err
@@ -208,12 +421,13 @@ func (c *CouchDB) FindAlumniByEmail(ctx context.Context, email string) (*models.
 	if len(result.Docs) == 0 {
 		return nil, nil
 	}
-	return &result.Docs[0], nil
+	a := fromCouchAlumniDoc(result.Docs[0])
+	return &a, nil
 }
 
 func (c *CouchDB) FindAlumniByVerificationToken(ctx context.Context, token string) (*models.Alumni, error) {
 	var result struct {
-		Docs []models.Alumni `json:"docs"`
+		Docs []couchAlumniDoc `json:"docs"`
 	}
 	if err := c.findDocs(ctx, "alumni", map[string]interface{}{"verification_token": token}, &result); err != nil {
 		return nil, err
@@ -221,21 +435,28 @@ func (c *CouchDB) FindAlumniByVerificationToken(ctx context.Context, token strin
 	if len(result.Docs) == 0 {
 		return nil, nil
 	}
-	return &result.Docs[0], nil
+	a := fromCouchAlumniDoc(result.Docs[0])
+	return &a, nil
 }
 
 // --- Subgroup ---
 
 func (c *CouchDB) GetSubgroup(ctx context.Context, id string) (*models.Subgroup, error) {
-	var s models.Subgroup
-	if err := c.getDoc(ctx, "subgroups", id, &s); err != nil {
+	var doc couchSubgroupDoc
+	if err := c.getDoc(ctx, "subgroups", id, &doc); err != nil {
 		return nil, err
 	}
+	s := fromCouchSubgroupDoc(doc)
 	return &s, nil
 }
 
 func (c *CouchDB) SaveSubgroup(ctx context.Context, s *models.Subgroup) error {
-	id, rev, err := c.postDoc(ctx, "subgroups", s)
+	now := time.Now().UTC()
+	if s.DibuatPada.IsZero() {
+		s.DibuatPada = now
+	}
+	s.Diperbarui = now
+	id, rev, err := c.postDoc(ctx, "subgroups", toCouchSubgroupDoc(s))
 	if err != nil {
 		return err
 	}
@@ -245,7 +466,8 @@ func (c *CouchDB) SaveSubgroup(ctx context.Context, s *models.Subgroup) error {
 }
 
 func (c *CouchDB) UpdateSubgroup(ctx context.Context, s *models.Subgroup) error {
-	rev, err := c.putDoc(ctx, "subgroups", s.ID, s.Rev, s)
+	s.Diperbarui = time.Now().UTC()
+	rev, err := c.putDoc(ctx, "subgroups", s.ID, s.Rev, toCouchSubgroupDoc(s))
 	if err != nil {
 		return err
 	}
@@ -260,15 +482,15 @@ func (c *CouchDB) DeleteSubgroup(ctx context.Context, id, rev string) error {
 func (c *CouchDB) ListSubgroups(ctx context.Context) ([]models.Subgroup, error) {
 	var result struct {
 		Rows []struct {
-			Doc models.Subgroup `json:"doc"`
+			Doc couchSubgroupDoc `json:"doc"`
 		} `json:"rows"`
 	}
 	if err := c.allDocs(ctx, "subgroups", &result); err != nil {
 		return nil, err
 	}
-	var subgroups []models.Subgroup
+	subgroups := make([]models.Subgroup, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		subgroups = append(subgroups, row.Doc)
+		subgroups = append(subgroups, fromCouchSubgroupDoc(row.Doc))
 	}
 	return subgroups, nil
 }
@@ -276,7 +498,12 @@ func (c *CouchDB) ListSubgroups(ctx context.Context) ([]models.Subgroup, error) 
 // --- Forum Post ---
 
 func (c *CouchDB) SaveForumPost(ctx context.Context, p *models.ForumPost) error {
-	id, rev, err := c.postDoc(ctx, "forum_posts", p)
+	now := time.Now().UTC()
+	if p.DibuatPada.IsZero() {
+		p.DibuatPada = now
+	}
+	p.Diperbarui = now
+	id, rev, err := c.postDoc(ctx, "forum_posts", toCouchForumPostDoc(p))
 	if err != nil {
 		return err
 	}
@@ -288,15 +515,15 @@ func (c *CouchDB) SaveForumPost(ctx context.Context, p *models.ForumPost) error 
 func (c *CouchDB) ListForumPosts(ctx context.Context) ([]models.ForumPost, error) {
 	var result struct {
 		Rows []struct {
-			Doc models.ForumPost `json:"doc"`
+			Doc couchForumPostDoc `json:"doc"`
 		} `json:"rows"`
 	}
 	if err := c.allDocs(ctx, "forum_posts", &result, "descending=true"); err != nil {
 		return nil, err
 	}
-	var posts []models.ForumPost
+	posts := make([]models.ForumPost, 0, len(result.Rows))
 	for _, row := range result.Rows {
-		posts = append(posts, row.Doc)
+		posts = append(posts, fromCouchForumPostDoc(row.Doc))
 	}
 	return posts, nil
 }

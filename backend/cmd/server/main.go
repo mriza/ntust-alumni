@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -20,6 +21,9 @@ func validateConfig() error {
 	if os.Getenv("JWT_SECRET") == "" {
 		return errors.New("JWT_SECRET environment variable is required; refusing to start with insecure default")
 	}
+	if os.Getenv("COUCHDB_URL") == "" {
+		return errors.New("COUCHDB_URL environment variable is required; refusing to start with hardcoded credentials")
+	}
 	return nil
 }
 
@@ -28,6 +32,18 @@ var dbStore db.Store
 
 func SetupRouter() *gin.Engine {
 	router := gin.Default()
+
+	// CORS for local static/file frontend access
+	router.Use(func(c *gin.Context) {
+		c.Header("Access-Control-Allow-Origin", "*")
+		c.Header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		c.Header("Access-Control-Allow-Headers", "Origin, Content-Type, Accept, Authorization")
+		if c.Request.Method == http.MethodOptions {
+			c.AbortWithStatus(http.StatusNoContent)
+			return
+		}
+		c.Next()
+	})
 
 	// Security headers
 	router.Use(func(c *gin.Context) {
@@ -69,10 +85,6 @@ func main() {
 	}
 
 	couchURL := os.Getenv("COUCHDB_URL")
-	if couchURL == "" {
-		couchURL = "http://admin:<COUCHDB_PASSWORD>@localhost:5984"
-	}
-
 	jwtSecret := os.Getenv("JWT_SECRET")
 
 	port := os.Getenv("PORT")
@@ -101,11 +113,20 @@ func main() {
 	subgroupHandler := handlers.NewSubgroupHandler(database)
 	forumHandler := handlers.NewForumHandler(database)
 
-	// Email client (Brevo)
+	// Email, SMS & WhatsApp client (Brevo)
 	brevoClient := email.NewBrevoClient(
 		os.Getenv("BREVO_API_KEY"),
 		os.Getenv("BREVO_FROM_EMAIL"),
 		os.Getenv("BREVO_FROM_NAME"),
+	)
+	var waTemplateID int64
+	if rawTID := os.Getenv("BREVO_WHATSAPP_TEMPLATE_ID"); rawTID != "" {
+		waTemplateID, _ = strconv.ParseInt(rawTID, 10, 64)
+	}
+	brevoClient.ConfigureMessaging(
+		os.Getenv("BREVO_SMS_SENDER"),
+		os.Getenv("BREVO_WHATSAPP_SENDER"),
+		waTemplateID,
 	)
 	verificationHandler := handlers.NewVerificationHandler(database, brevoClient)
 
@@ -116,6 +137,7 @@ func main() {
 	{
 		public.POST("/register", authHandler.Register)
 		public.POST("/login", authHandler.Login)
+		public.GET("/verify/status", verificationHandler.VerificationStatus)
 		public.POST("/verify", verificationHandler.Verify)
 		public.GET("/forum", forumHandler.ListForumPosts)
 	}
@@ -135,8 +157,10 @@ func main() {
 	{
 		protected.GET("/me", authHandler.Me)
 		protected.PUT("/alumni/:id", alumniHandler.UpdateAlumni)
+		protected.POST("/alumni/:id", alumniHandler.UpdateAlumni)
 		protected.POST("/forum", forumHandler.CreateForumPost)
 		protected.POST("/request-verification", verificationHandler.RequestVerification)
+		protected.GET("/subgroups", subgroupHandler.ListSubgroups)
 	}
 
 	// Admin routes (super_admin dan regional_admin)
@@ -144,10 +168,6 @@ func main() {
 	admin.Use(middleware.AuthMiddleware())
 	admin.Use(middleware.RequireRole("super_admin", "regional_admin"))
 	{
-		admin.GET("/subgroups", subgroupHandler.ListSubgroups)
-		admin.POST("/subgroups", subgroupHandler.CreateSubgroup)
-		admin.PUT("/subgroups/:id", subgroupHandler.UpdateSubgroup)
-		admin.DELETE("/subgroups/:id", subgroupHandler.DeleteSubgroup)
 		admin.POST("/subgroups/:id/admin", subgroupHandler.AppointAdmin)
 	}
 
@@ -156,7 +176,9 @@ func main() {
 	superAdmin.Use(middleware.AuthMiddleware())
 	superAdmin.Use(middleware.RequireRole("super_admin"))
 	{
-		// Super admin bisa managing semua
+		superAdmin.POST("/subgroups", subgroupHandler.CreateSubgroup)
+		superAdmin.PUT("/subgroups/:id", subgroupHandler.UpdateSubgroup)
+		superAdmin.DELETE("/subgroups/:id", subgroupHandler.DeleteSubgroup)
 	}
 
 	log.Printf("Server berjalan di port %s", port)

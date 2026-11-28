@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -28,6 +29,13 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	req.Nama = strings.TrimSpace(req.Nama)
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.Nama == "" || !strings.Contains(req.Email, "@") || len(req.Password) < 6 {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Nama wajib diisi, email harus valid, dan password minimal 6 karakter"})
+		return
+	}
+
 	// Cek apakah email sudah terdaftar — kembalikan generic response agar
 	// tidak bisa diakses dari luar untuk enumerasi email
 	existing, _ := h.database.FindAlumniByEmail(c.Request.Context(), req.Email)
@@ -44,13 +52,21 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	alumni := &models.Alumni{
-		Nama:          req.Nama,
-		Email:         req.Email,
-		Nim:           req.Nim,
-		Jurusan:       req.Jurusan,
-		Status:        "pending",
-		Role:          "member",
-		PasswordHash:  string(hashedPassword),
+		Nama:         req.Nama,
+		Email:        req.Email,
+		Nim:          strings.TrimSpace(req.Nim),
+		Jurusan:      strings.TrimSpace(req.Jurusan),
+		Wilayah:      strings.TrimSpace(req.Wilayah),
+		NoTelp:       strings.TrimSpace(req.Telepon),
+		Status:       "pending",
+		Role:         "member",
+		PasswordHash: string(hashedPassword),
+	}
+	if req.TahunLulus > 0 {
+		alumni.PendidikanNTUST = &models.PendidikanNTUST{
+			TahunLulus: req.TahunLulus,
+			Jurusan:    strings.TrimSpace(req.Jurusan),
+		}
 	}
 
 	if err := h.database.SaveAlumni(c.Request.Context(), alumni); err != nil {
@@ -75,8 +91,9 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid"})
 		return
 	}
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 
-	// Rate limit: 5 per email/IP per 10 min, mengembalikan 429 setelah limit
+	// Rate limit: 5 per email / 10 per IP per 15 min window, mengembalikan 429 setelah limit
 	ip := c.ClientIP()
 	if allowed, _ := h.rateLimiter.CheckAndIncrement("login-ip:"+ip, 10); !allowed {
 		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak login. Coba lagi dalam 10 menit"})
@@ -98,16 +115,7 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Generate JWT
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  alumni.ID,
-		"email":    alumni.Email,
-		"role":     alumni.Role,
-		"status":   alumni.Status,
-		"exp":      time.Now().Add(24 * time.Hour).Unix(),
-	})
-
-	tokenString, err := token.SignedString(jwtKey)
+	tokenString, err := GenerateJWT(alumni)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal generate token"})
 		return
@@ -130,15 +138,9 @@ func (h *AuthHandler) Me(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"id":          alumni.ID,
-		"no_telp":     alumni.NoTelp,
-		"nama":        alumni.Nama,
-		"email":       alumni.Email,
-		"nim":         alumni.Nim,
-		"jurusan":     alumni.Jurusan,
-		"wilayah":     alumni.Wilayah,
-		"role":        alumni.Role,
+	c.JSON(http.StatusOK, models.SuccessResponse{
+		Message: "Profil berhasil diambil",
+		Data:    AlumniPublicFromAlumni(alumni),
 	})
 }
 
@@ -146,4 +148,16 @@ var jwtKey []byte
 
 func SetJWTKey(key []byte) {
 	jwtKey = key
+}
+
+// GenerateJWT membuat token JWT HS256 untuk alumni.
+func GenerateJWT(alumni *models.Alumni) (string, error) {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"user_id": alumni.ID,
+		"email":   alumni.Email,
+		"role":    alumni.Role,
+		"status":  alumni.Status,
+		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+	})
+	return token.SignedString(jwtKey)
 }

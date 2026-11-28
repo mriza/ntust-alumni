@@ -13,6 +13,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 	"ntust-alumni/backend/internal/db"
+	"ntust-alumni/backend/internal/middleware"
 	"ntust-alumni/backend/internal/models"
 )
 
@@ -61,18 +62,45 @@ func (f *fakeDB) UpdateAlumni(ctx context.Context, a *models.Alumni) error {
 }
 
 func (f *fakeDB) ListAlumni(ctx context.Context, search, wilayah, jurusan string, limit, offset int) ([]models.Alumni, error) {
+	q := strings.ToLower(search)
 	var result []models.Alumni
 	for _, a := range f.alumni {
-		// Simple in-memory filter
 		if wilayah != "" && a.Wilayah != wilayah {
 			continue
 		}
 		if jurusan != "" && a.Jurusan != jurusan {
 			continue
 		}
+		if q != "" {
+			match := strings.Contains(strings.ToLower(a.Nama), q) ||
+				strings.Contains(strings.ToLower(a.Email), q) ||
+				strings.Contains(strings.ToLower(a.Nim), q) ||
+				strings.Contains(strings.ToLower(a.Wilayah), q) ||
+				strings.Contains(strings.ToLower(a.Jurusan), q)
+			if !match && a.Pekerjaan != nil {
+				match = strings.Contains(strings.ToLower(a.Pekerjaan.Institusi), q) ||
+					strings.Contains(strings.ToLower(a.Pekerjaan.Jabatan), q)
+			}
+			if !match {
+				continue
+			}
+		}
 		result = append(result, *a)
 	}
-	return result, nil
+	if offset < 0 {
+		offset = 0
+	}
+	if offset >= len(result) {
+		return []models.Alumni{}, nil
+	}
+	if limit > 0 {
+		end := offset + limit
+		if end > len(result) {
+			end = len(result)
+		}
+		return result[offset:end], nil
+	}
+	return result[offset:], nil
 }
 
 func (f *fakeDB) FindAlumniByEmail(ctx context.Context, email string) (*models.Alumni, error) {
@@ -150,20 +178,39 @@ var _ db.Store = (*fakeDB)(nil)
 type errNotFound struct{}
 func (e *errNotFound) Error() string { return "not found" }
 
-// fakeEmailClient implements email sending for verification handler tests
+// fakeEmailClient implements email, SMS & WhatsApp sending for verification handler tests
 type fakeEmailClient struct {
-	sentTo     string
-	sentOTP    string
-	sentToken  string
-	sendError  error
-	callCount  int
+	sentTo       string
+	sentPhone    string
+	sentChannel  string
+	sentOTP      string
+	sentToken    string
+	sendError    error
+	callCount    int
 }
 
 func (f *fakeEmailClient) SendVerificationOTP(to, otp, token string) error {
 	f.callCount++
+	f.sentChannel = "email"
 	f.sentTo = to
 	f.sentOTP = otp
 	f.sentToken = token
+	return f.sendError
+}
+
+func (f *fakeEmailClient) SendVerificationSMS(phone, otp string) error {
+	f.callCount++
+	f.sentChannel = "sms"
+	f.sentPhone = phone
+	f.sentOTP = otp
+	return f.sendError
+}
+
+func (f *fakeEmailClient) SendVerificationWhatsApp(phone, otp string) error {
+	f.callCount++
+	f.sentChannel = "whatsapp"
+	f.sentPhone = phone
+	f.sentOTP = otp
 	return f.sendError
 }
 
@@ -327,5 +374,108 @@ func TestLoginRejectsUnknownEmail(t *testing.T) {
 
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", w.Code)
+	}
+}
+
+func TestMeReturnsWrappedProfileWithStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	middleware.InitJWT("test-secret")
+	SetJWTKey([]byte("test-secret"))
+
+	database.SaveAlumni(context.Background(), &models.Alumni{
+		ID:      "u1",
+		Nama:    "Budi",
+		Email:   "budi@example.com",
+		Status:  "verified",
+		Role:    "member",
+		Wilayah: "Jakarta",
+		Jurusan: "CSIE",
+	})
+
+	h := NewAuthHandler(database)
+	router := gin.New()
+	router.Use(middleware.AuthMiddleware())
+	router.GET("/me", h.Me)
+
+	tok, _ := GenerateJWT(&models.Alumni{ID: "u1", Email: "budi@example.com", Role: "member", Status: "verified"})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/me", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Message string       `json:"message"`
+		Data    AlumniPublic `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if resp.Data.ID != "u1" || resp.Data.Status != "verified" || resp.Data.Jurusan != "CSIE" {
+		t.Errorf("unexpected /me data: %+v", resp.Data)
+	}
+}
+
+func TestRegisterPersistsWilayahTeleponTahunLulusAndValidates(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	h := NewAuthHandler(database)
+
+	router := gin.New()
+	router.POST("/register", h.Register)
+
+	// Invalid short password
+	wBad := httptest.NewRecorder()
+	reqBad, _ := http.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(`{"nama":"A","email":"a@b.com","password":"123"}`))
+	reqBad.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(wBad, reqBad)
+	if wBad.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for short password, got %d", wBad.Code)
+	}
+
+	// Valid registration
+	body := `{"nama":"Siti","email":"Siti@Example.com","password":"secret123","nim":"M109","jurusan":"ECE","tahun_lulus":2022,"wilayah":"Bandung","telepon":"0811111"}`
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", w.Code, w.Body.String())
+	}
+	saved, _ := database.FindAlumniByEmail(context.Background(), "siti@example.com")
+	if saved == nil || saved.Wilayah != "Bandung" || saved.NoTelp != "0811111" || saved.PendidikanNTUST == nil || saved.PendidikanNTUST.TahunLulus != 2022 {
+		t.Errorf("expected fields persisted on register, got %+v", saved)
+	}
+}
+
+func TestLoginRateLimitReturns429(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	SetJWTKey([]byte("test-secret"))
+	h := NewAuthHandler(database)
+
+	router := gin.New()
+	router.POST("/login", h.Login)
+
+	for i := 0; i < 5; i++ {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(`{"email":"rate@example.com","password":"wrong"}`))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: expected 401, got %d", i+1, w.Code)
+		}
+	}
+
+	w6 := httptest.NewRecorder()
+	req6, _ := http.NewRequest(http.MethodPost, "/login", bytes.NewBufferString(`{"email":"rate@example.com","password":"wrong"}`))
+	req6.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w6, req6)
+	if w6.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 on 6th login attempt, got %d", w6.Code)
 	}
 }

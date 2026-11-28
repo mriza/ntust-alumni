@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"ntust-alumni/backend/internal/db"
@@ -23,6 +24,9 @@ func (h *SubgroupHandler) ListSubgroups(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal mengambil data subgroup"})
 		return
 	}
+	if subgroups == nil {
+		subgroups = []models.Subgroup{}
+	}
 	c.JSON(http.StatusOK, models.SuccessResponse{
 		Message: "Data subgroup berhasil diambil",
 		Data:    subgroups,
@@ -37,11 +41,19 @@ func (h *SubgroupHandler) CreateSubgroup(c *gin.Context) {
 		return
 	}
 
+	req.Nama = strings.TrimSpace(req.Nama)
+	req.Wilayah = strings.TrimSpace(req.Wilayah)
+	if req.Nama == "" || req.Wilayah == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Nama subgroup dan wilayah wajib diisi"})
+		return
+	}
+
 	subgroup := &models.Subgroup{
-		Nama:       req.Nama,
-		Wilayah:    req.Wilayah,
-		Deskripsi:  req.Deskripsi,
-		AdminID:    req.AdminID,
+		Nama:      req.Nama,
+		Wilayah:   req.Wilayah,
+		Deskripsi: req.Deskripsi,
+		AdminID:   req.AdminID,
+		Pengurus:  req.Pengurus,
 	}
 
 	if err := h.database.SaveSubgroup(c.Request.Context(), subgroup); err != nil {
@@ -74,6 +86,9 @@ func (h *SubgroupHandler) UpdateSubgroup(c *gin.Context) {
 	subgroup.Wilayah = req.Wilayah
 	subgroup.Deskripsi = req.Deskripsi
 	subgroup.AdminID = req.AdminID
+	if req.Pengurus != nil {
+		subgroup.Pengurus = req.Pengurus
+	}
 
 	if err := h.database.UpdateSubgroup(c.Request.Context(), subgroup); err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal memperbarui subgroup"})

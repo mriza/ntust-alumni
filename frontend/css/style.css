@@ -55,9 +55,36 @@ body {
 
 .nav-links a:hover { color: #3498db; }
 
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.health-indicator {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: #eef2f7;
+    color: #555;
+    white-space: nowrap;
+}
+
+.health-indicator.online {
+    background: #d5f5e3;
+    color: #1e8449;
+}
+
+.health-indicator.offline {
+    background: #fadbd8;
+    color: #c0392b;
+}
+
 .nav-auth {
     display: flex;
     gap: 10px;
+    align-items: center;
 }
 
 .nav-auth a, .nav-auth button {
@@ -486,3 +513,136 @@ body {
 
 .status-pending { color: #f39c12; font-weight: 600; }
 .status-verified { color: #27ae60; font-weight: 600; }
+
+.verify-banner {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    background: #fef9e7;
+    border: 1px solid #f7dc6f;
+    color: #7d6608;
+    padding: 14px 16px;
+    border-radius: 8px;
+    margin-bottom: 18px;
+}
+
+.avatar-preview {
+    width: 84px;
+    height: 84px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 2px solid #dfe6e9;
+    background: #ecf0f1;
+    flex-shrink: 0;
+}
+
+.avatar-thumb {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #dfe6e9;
+    background: #ecf0f1;
+    flex-shrink: 0;
+}
+
+.avatar-placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    color: #2c3e50;
+}
+
+.directory-controls {
+    display: grid;
+    grid-template-columns: 2fr 1.2fr 1fr auto;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    margin-top: 24px;
+}
+
+.btn-sm {
+    padding: 6px 14px;
+    font-size: 13px;
+}
+
+.pengurus-list {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #eee;
+}
+
+.pengurus-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #2c3e50;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+}
+
+.pengurus-item {
+    font-size: 13px;
+    color: #444;
+    padding: 3px 0;
+}
+
+.channel-tabs {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin: 16px 0 20px;
+}
+
+.channel-tab {
+    padding: 8px 18px;
+    border-radius: 20px;
+    border: 1px solid #d0d7de;
+    background: #fff;
+    color: #2c3e50;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.2s;
+}
+
+.channel-tab.active {
+    background: #3498db;
+    color: #fff;
+    border-color: #3498db;
+}
+
+.confirm-box {
+    background: #f8f9fa;
+    border: 1px solid #e1e5eb;
+    border-radius: 10px;
+    padding: 18px;
+    margin-top: 10px;
+}
+
+.otp-input {
+    letter-spacing: 6px;
+    font-size: 20px;
+    font-weight: 700;
+    text-align: center;
+}
+
+@media (max-width: 768px) {
+    .nav-container {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+    .directory-controls {
+        grid-template-columns: 1fr;
+    }
+}

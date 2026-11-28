@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,12 +22,13 @@ func NewAlumniHandler(database db.Store) *AlumniHandler {
 	return &AlumniHandler{database: database}
 }
 
-// ListAlumni mengembalikan daftar alumni VERIFIED (direktori) dengan search & filter
+// ListAlumni mengembalikan daftar alumni VERIFIED (direktori) dengan search, filter, sort & pagination
 func (h *AlumniHandler) ListAlumni(c *gin.Context) {
-	// Parsing query params: q=search, wilayah, jurusan, page, limit
-	query := c.Query("q")
-	wilayah := c.Query("wilayah")
-	jurusan := c.Query("jurusan")
+	// Parsing query params: q=search, wilayah, jurusan, sort, page, limit
+	query := strings.TrimSpace(c.Query("q"))
+	wilayah := strings.TrimSpace(c.Query("wilayah"))
+	jurusan := strings.TrimSpace(c.Query("jurusan"))
+	sortBy := strings.TrimSpace(c.Query("sort"))
 	pageStr := c.Query("page")
 	limitStr := c.Query("limit")
 
@@ -46,18 +48,38 @@ func (h *AlumniHandler) ListAlumni(c *gin.Context) {
 	}
 	offset := (page - 1) * limit
 
-	alumni, err := h.database.ListAlumni(c.Request.Context(), query, wilayah, jurusan, limit, offset)
+	// Ambil semua yang cocok lalu filter verified sebelum pagination agar total & halaman akurat
+	alumni, err := h.database.ListAlumni(c.Request.Context(), query, wilayah, jurusan, 0, 0)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal mengambil data alumni"})
 		return
 	}
 
-	var result []AlumniPublic
+	filtered := make([]AlumniPublic, 0)
 	for _, a := range alumni {
 		if a.Status != "verified" {
 			continue
 		}
-		result = append(result, AlumniPublicFromAlumni(&a))
+		filtered = append(filtered, AlumniPublicFromAlumni(&a))
+	}
+
+	sort.Slice(filtered, func(i, j int) bool {
+		ni := strings.ToLower(filtered[i].Nama)
+		nj := strings.ToLower(filtered[j].Nama)
+		if sortBy == "nama_desc" {
+			return ni > nj
+		}
+		return ni < nj
+	})
+
+	total := len(filtered)
+	result := make([]AlumniPublic, 0)
+	if offset < total {
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+		result = filtered[offset:end]
 	}
 
 	c.JSON(http.StatusOK, models.SuccessResponse{
@@ -66,32 +88,35 @@ func (h *AlumniHandler) ListAlumni(c *gin.Context) {
 			"alumni": result,
 			"page":   page,
 			"limit":  limit,
+			"total":  total,
 		},
 	})
 }
 
 // AlumniPublic adalah representasi public dari alumni yang ditampilkan ke publik
 type AlumniPublic struct {
-	ID              string         `json:"id"`
-	Nama            string         `json:"nama"`
-	Email           string         `json:"email"`
-	Nim             string         `json:"nim,omitempty"`
-	Status          string         `json:"status"`
-	Wilayah         string         `json:"wilayah,omitempty"`
-	SubgroupID      string         `json:"subgroup_id,omitempty"`
-	Role            string         `json:"role"`
-	NoTelp          string         `json:"no_telp,omitempty"`
-	NoWA            string         `json:"no_wa,omitempty"`
-	Telegram        string         `json:"telegram,omitempty"`
-	Sosmed          *models.Sosmed `json:"sosmed,omitempty"`
-	FotoProfil      string         `json:"foto_profil,omitempty"`
-	LinkedIn        string         `json:"linkedin,omitempty"`
-	BidangKeahianan []string       `json:"bidang_keahlian,omitempty"`
-	PreferensiKontak string        `json:"preferensi_kontak,omitempty"`
-	StatusKeaktifan  string        `json:"status_keaktifan,omitempty"`
-	Pekerjaan       *models.Pekerjaan `json:"pekerjaan,omitempty"`
-	PendidikanNTUST *models.PendidikanNTUST `json:"pendidikan_ntust,omitempty"`
-	DibuatPada      time.Time      `json:"dibuat_pada,omitempty"`
+	ID               string                  `json:"id"`
+	Nama             string                  `json:"nama"`
+	Email            string                  `json:"email"`
+	EmailNtust       string                  `json:"email_ntust,omitempty"`
+	Nim              string                  `json:"nim,omitempty"`
+	Jurusan          string                  `json:"jurusan,omitempty"`
+	Status           string                  `json:"status"`
+	Wilayah          string                  `json:"wilayah,omitempty"`
+	SubgroupID       string                  `json:"subgroup_id,omitempty"`
+	Role             string                  `json:"role"`
+	NoTelp           string                  `json:"no_telp,omitempty"`
+	NoWA             string                  `json:"no_wa,omitempty"`
+	Telegram         string                  `json:"telegram,omitempty"`
+	Sosmed           *models.Sosmed          `json:"sosmed,omitempty"`
+	FotoProfil       string                  `json:"foto_profil,omitempty"`
+	LinkedIn         string                  `json:"linkedin,omitempty"`
+	BidangKeahianan  []string                `json:"bidang_keahlian,omitempty"`
+	PreferensiKontak string                  `json:"preferensi_kontak,omitempty"`
+	StatusKeaktifan  string                  `json:"status_keaktifan,omitempty"`
+	Pekerjaan        *models.Pekerjaan       `json:"pekerjaan,omitempty"`
+	PendidikanNTUST  *models.PendidikanNTUST `json:"pendidikan_ntust,omitempty"`
+	DibuatPada       time.Time               `json:"dibuat_pada,omitempty"`
 }
 
 func AlumniPublicFromAlumni(a *models.Alumni) AlumniPublic {
@@ -99,7 +124,9 @@ func AlumniPublicFromAlumni(a *models.Alumni) AlumniPublic {
 		ID:               a.ID,
 		Nama:             a.Nama,
 		Email:            a.Email,
+		EmailNtust:       a.EmailNtust,
 		Nim:              a.Nim,
+		Jurusan:          a.Jurusan,
 		Status:           a.Status,
 		Wilayah:          a.Wilayah,
 		SubgroupID:       a.SubgroupID,
@@ -134,21 +161,23 @@ func (h *AlumniHandler) GetAlumniByID(c *gin.Context) {
 	})
 }
 
-// UpdateAlumniRequest adalah body request untuk PUT /alumni/:id
+// UpdateAlumniRequest adalah body request untuk PUT/POST /alumni/:id
 type UpdateAlumniRequest struct {
-	Nama             string                    `json:"nama,omitempty"`
-	NoTelp           string                    `json:"no_telp,omitempty"`
-	NoWA             string                    `json:"no_wa,omitempty"`
-	Telegram         string                    `json:"telegram,omitempty"`
-	Sosmed           *models.Sosmed            `json:"sosmed,omitempty"`
-	FotoProfil       string                    `json:"foto_profil,omitempty"`
-	LinkedIn         string                    `json:"linkedin,omitempty"`
-	BidangKeahianan  []string                  `json:"bidang_keahlian,omitempty"`
-	PreferensiKontak string                    `json:"preferensi_kontak,omitempty"`
-	StatusKeaktifan  string                    `json:"status_keaktifan,omitempty"`
-	Pekerjaan        *models.Pekerjaan         `json:"pekerjaan,omitempty"`
-	PendidikanNTUST  *models.PendidikanNTUST   `json:"pendidikan_ntust,omitempty"`
-	Wilayah          string                    `json:"wilayah,omitempty"`
+	Nama             string                  `json:"nama,omitempty"`
+	Nim              string                  `json:"nim,omitempty"`
+	Jurusan          string                  `json:"jurusan,omitempty"`
+	NoTelp           string                  `json:"no_telp,omitempty"`
+	NoWA             string                  `json:"no_wa,omitempty"`
+	Telegram         string                  `json:"telegram,omitempty"`
+	Sosmed           *models.Sosmed          `json:"sosmed,omitempty"`
+	FotoProfil       string                  `json:"foto_profil,omitempty"`
+	LinkedIn         string                  `json:"linkedin,omitempty"`
+	BidangKeahianan  []string                `json:"bidang_keahlian,omitempty"`
+	PreferensiKontak string                  `json:"preferensi_kontak,omitempty"`
+	StatusKeaktifan  string                  `json:"status_keaktifan,omitempty"`
+	Pekerjaan        *models.Pekerjaan       `json:"pekerjaan,omitempty"`
+	PendidikanNTUST  *models.PendidikanNTUST `json:"pendidikan_ntust,omitempty"`
+	Wilayah          string                  `json:"wilayah,omitempty"`
 }
 
 const maxPhotoBytes = 2 * 1024 * 1024 // 2 MB
@@ -213,6 +242,12 @@ func (h *AlumniHandler) UpdateAlumni(c *gin.Context) {
 	// Update semua field yang di-request
 	if req.Nama != "" {
 		alumni.Nama = req.Nama
+	}
+	if req.Nim != "" {
+		alumni.Nim = req.Nim
+	}
+	if req.Jurusan != "" {
+		alumni.Jurusan = req.Jurusan
 	}
 	if req.NoTelp != "" {
 		alumni.NoTelp = req.NoTelp

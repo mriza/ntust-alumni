@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"ntust-alumni/backend/internal/db"
@@ -23,6 +24,9 @@ func (h *ForumHandler) ListForumPosts(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal mengambil postingan forum"})
 		return
 	}
+	if posts == nil {
+		posts = []models.ForumPost{}
+	}
 	c.JSON(http.StatusOK, models.SuccessResponse{
 		Message: "Data forum berhasil diambil",
 		Data:    posts,
@@ -36,6 +40,13 @@ func (h *ForumHandler) CreateForumPost(c *gin.Context) {
 	var req models.ForumPostRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid"})
+		return
+	}
+
+	req.Judul = strings.TrimSpace(req.Judul)
+	req.Isi = strings.TrimSpace(req.Isi)
+	if req.Judul == "" || req.Isi == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Judul dan isi postingan wajib diisi"})
 		return
 	}
 

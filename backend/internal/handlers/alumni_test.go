@@ -3,6 +3,8 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -220,5 +222,108 @@ func TestUpdateAlumniRejectsOtherUser(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected 403, got %d", w.Code)
+	}
+}
+
+func TestListAlumniSearchFilterSortPagination(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	middleware.InitJWT("test-secret")
+	SetJWTKey([]byte("test-secret"))
+
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "p1", Nama: "Pending", Email: "p@x.com", Status: "pending", Wilayah: "Jakarta", Jurusan: "CSIE"})
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "v1", Nama: "Andi", Email: "andi@x.com", Status: "verified", Wilayah: "Jakarta", Jurusan: "CSIE"})
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "v2", Nama: "Zaki", Email: "zaki@x.com", Status: "verified", Wilayah: "Jakarta", Jurusan: "CSIE"})
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "v3", Nama: "Budi", Email: "budi@x.com", Status: "verified", Wilayah: "Bandung", Jurusan: "ECE"})
+
+	h := NewAlumniHandler(database)
+	router := gin.New()
+	router.Use(middleware.AuthMiddleware(), middleware.RequireVerified())
+	router.GET("/alumni", h.ListAlumni)
+
+	tok, _ := GenerateJWT(&models.Alumni{ID: "v1", Email: "andi@x.com", Role: "member", Status: "verified"})
+
+	// Filter wilayah=Jakarta, sort=nama_desc, page=1, limit=1 -> total 2, first item Zaki
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/alumni?wilayah=Jakarta&jurusan=CSIE&sort=nama_desc&page=1&limit=1", nil)
+	req.Header.Set("Authorization", "Bearer "+tok)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp struct {
+		Data struct {
+			Alumni []AlumniPublic `json:"alumni"`
+			Page   int            `json:"page"`
+			Limit  int            `json:"limit"`
+			Total  int            `json:"total"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal error: %v", err)
+	}
+	if resp.Data.Total != 2 || len(resp.Data.Alumni) != 1 || resp.Data.Alumni[0].Nama != "Zaki" {
+		t.Errorf("unexpected filtered/sorted/paginated result: %+v", resp.Data)
+	}
+
+	// Search q=budi
+	w2 := httptest.NewRecorder()
+	req2, _ := http.NewRequest(http.MethodGet, "/alumni?q=budi", nil)
+	req2.Header.Set("Authorization", "Bearer "+tok)
+	router.ServeHTTP(w2, req2)
+	var resp2 struct {
+		Data struct {
+			Alumni []AlumniPublic `json:"alumni"`
+			Total  int            `json:"total"`
+		} `json:"data"`
+	}
+	json.Unmarshal(w2.Body.Bytes(), &resp2)
+	if resp2.Data.Total != 1 || len(resp2.Data.Alumni) != 1 || resp2.Data.Alumni[0].Nama != "Budi" {
+		t.Errorf("unexpected search result: %+v", resp2.Data)
+	}
+}
+
+func TestUpdateAlumniPhotoValidation(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	middleware.InitJWT("test-secret")
+	SetJWTKey([]byte("test-secret"))
+
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "u1", Nama: "User", Email: "u@x.com", Role: "member", Status: "verified"})
+	h := NewAlumniHandler(database)
+	router := gin.New()
+	router.Use(middleware.AuthMiddleware())
+	router.POST("/alumni/:id", h.UpdateAlumni)
+
+	tok, _ := GenerateJWT(&models.Alumni{ID: "u1", Email: "u@x.com", Role: "member", Status: "verified"})
+
+	sendPhoto := func(photo string) int {
+		b, _ := json.Marshal(map[string]string{"foto_profil": photo})
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodPost, "/alumni/u1", bytes.NewReader(b))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+tok)
+		router.ServeHTTP(w, req)
+		return w.Code
+	}
+
+	// Valid small PNG
+	validPNG := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("pngbytes"))
+	if code := sendPhoto(validPNG); code != http.StatusOK {
+		t.Errorf("expected 200 for valid PNG, got %d", code)
+	}
+	// Reject SVG
+	svg := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte("<svg/>"))
+	if code := sendPhoto(svg); code != http.StatusBadRequest {
+		t.Errorf("expected 400 for SVG, got %d", code)
+	}
+	// Reject non-data-URL
+	if code := sendPhoto("https://evil.com/x.png"); code != http.StatusBadRequest {
+		t.Errorf("expected 400 for non-data URL, got %d", code)
+	}
+	// Reject >2MB
+	big := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(make([]byte, maxPhotoBytes+1))
+	if code := sendPhoto(big); code != http.StatusBadRequest {
+		t.Errorf("expected 400 for >2MB photo, got %d", code)
 	}
 }
