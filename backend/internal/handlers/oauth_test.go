@@ -211,4 +211,24 @@ func TestOAuthAccessTokenRejectedByAuthMiddleware(t *testing.T) {
 	if wNoR.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400 when redirect_uri is omitted on /api/oauth/token, got %d", wNoR.Code)
 	}
+	if wNoR.Header().Get("Cache-Control") != "no-store" {
+		t.Errorf("expected Cache-Control: no-store on /api/oauth/token, got %q", wNoR.Header().Get("Cache-Control"))
+	}
+}
+
+func TestOAuthRejectsEncodedPathTraversalRedirectURI(t *testing.T) {
+	prefix := "http://localhost:9080/answer/api/v1/connector/"
+	for _, bad := range []string{
+		"http://localhost:9080/answer/api/v1/connector/%2e%2e/admin",
+		"http://localhost:9080/answer/api/v1/connector\\evil",
+		"http://localhost:9080/answer/api/v1/connector/../users",
+		"http://localhost:9080/answer/api/v1/connector-evil/cb",
+	} {
+		if isAllowedRedirectURI(bad, prefix) {
+			t.Errorf("expected encoded/traversal redirect_uri %q to be rejected", bad)
+		}
+	}
+	if !isAllowedRedirectURI("http://localhost:9080/answer/api/v1/connector/redirect/basic", prefix) {
+		t.Error("expected normal connector redirect URI to be allowed")
+	}
 }

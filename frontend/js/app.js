@@ -1,5 +1,5 @@
-// app.js - Alumni NTUST Indonesia SPA
-// Konfigurasi
+// app.js - Alumni NTUST Indonesia SPA (Ant Design v5 + Zero Hardcoded Styles)
+
 const hostname = window.location.hostname;
 const isFileOrigin = window.location.protocol === 'file:';
 const API_BASE = isFileOrigin ? 'http://localhost:8080/api' : '/api';
@@ -15,7 +15,7 @@ const WILAYAH_LIST = [
 ];
 const MAX_PHOTO_BYTES = 2 * 1024 * 1024;
 
-// State
+// Application State
 let currentUser = null;
 let token = localStorage.getItem('token');
 let pendingFotoProfil = '';
@@ -29,7 +29,7 @@ let dirState = {
     total: 0
 };
 
-// XSS & URL safety helpers
+// XSS & URL Safety Helpers
 function esc(str) {
     return String(str ?? '')
         .replace(/&/g, '&amp;')
@@ -61,7 +61,22 @@ function safeImageDataUrl(val) {
     return '';
 }
 
-// Route helpers
+function getVerifyStorage() {
+    try {
+        if (typeof sessionStorage !== 'undefined') return sessionStorage;
+    } catch (_) {}
+    return localStorage;
+}
+
+// SVG Icon Helpers (strictly presentational, no inline styles)
+const ICONS = {
+    shield: '<svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>',
+    users: '<svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+    forum: '<svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8"/><path d="M8 13h6"/></svg>',
+    map: '<svg class="feature-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>'
+};
+
+// Route Helpers
 function parseRoute() {
     const raw = (window.location.hash || '').replace(/^#/, '');
     const qIndex = raw.indexOf('?');
@@ -83,7 +98,63 @@ function navigate(path) {
     }
 }
 
-// API helper
+// Theme Switcher & Responsive Navbar Setup
+function syncThemeSwitcherUI(pref) {
+    const switcher = document.getElementById('themeSwitcher');
+    if (!switcher) return;
+    const activePref = pref || window.ntustTheme?.getPreference?.() || 'system';
+    const buttons = switcher.children ? Array.from(switcher.children) : [];
+    buttons.forEach(btn => {
+        const val = btn.dataset?.themeValue || btn.getAttribute?.('data-theme-value') || '';
+        const isActive = val === activePref;
+        if (btn.classList) {
+            btn.classList.toggle('is-active', isActive);
+        } else {
+            btn.className = isActive ? 'ant-theme-btn is-active' : 'ant-theme-btn';
+        }
+        btn.setAttribute?.('aria-checked', String(isActive));
+    });
+}
+
+function initHeaderControls() {
+    const switcher = document.getElementById('themeSwitcher');
+    if (switcher && switcher.children) {
+        Array.from(switcher.children).forEach(btn => {
+            btn.addEventListener('click', () => {
+                const val = btn.dataset?.themeValue || btn.getAttribute?.('data-theme-value') || 'system';
+                const nextPref = window.ntustTheme ? window.ntustTheme.setPreference(val) : val;
+                syncThemeSwitcherUI(nextPref);
+            });
+        });
+        syncThemeSwitcherUI();
+    }
+
+    if (typeof window.addEventListener === 'function') {
+        window.addEventListener('ntust:themechange', (ev) => {
+            syncThemeSwitcherUI(ev?.detail?.preference);
+        });
+    }
+
+    const mobileToggle = document.getElementById('mobileNavToggle');
+    const siteHeader = document.getElementById('siteHeader');
+    if (mobileToggle && siteHeader) {
+        mobileToggle.addEventListener('click', () => {
+            const isOpen = siteHeader.classList ? siteHeader.classList.toggle('is-mobile-open') : false;
+            mobileToggle.setAttribute?.('aria-expanded', String(isOpen));
+        });
+    }
+}
+
+function closeMobileNav() {
+    const siteHeader = document.getElementById('siteHeader');
+    const mobileToggle = document.getElementById('mobileNavToggle');
+    if (siteHeader?.classList) {
+        siteHeader.classList.remove('is-mobile-open');
+    }
+    mobileToggle?.setAttribute?.('aria-expanded', 'false');
+}
+
+// API Fetch Helper
 async function apiFetch(path, options = {}) {
     const headers = {
         'Content-Type': 'application/json',
@@ -109,18 +180,29 @@ async function apiFetch(path, options = {}) {
     return res;
 }
 
+// Floating Ant Message Toast (falls back to #app if #toastContainer absent)
 function showAlert(message, type) {
+    const safeType = ['success', 'error', 'info'].includes(type) ? type : 'info';
+    const toastContainer = document.getElementById('toastContainer');
+    if (toastContainer) {
+        const msgEl = document.createElement('div');
+        msgEl.className = `ant-message ant-message-${safeType}`;
+        msgEl.textContent = message;
+        toastContainer.appendChild(msgEl);
+        setTimeout(() => msgEl.remove(), 4500);
+        return;
+    }
+
     const app = document.getElementById('app');
     if (!app) return;
-    const safeType = ['success', 'error', 'info'].includes(type) ? type : 'info';
     const alertDiv = document.createElement('div');
     alertDiv.className = `alert alert-${safeType}`;
     alertDiv.textContent = message;
     app.prepend(alertDiv);
-    setTimeout(() => alertDiv.remove(), 5000);
+    setTimeout(() => alertDiv.remove(), 4500);
 }
 
-// Health check polling
+// Health Check Polling
 async function checkHealth() {
     const el = document.getElementById('healthIndicator');
     if (!el) return;
@@ -141,40 +223,52 @@ async function checkHealth() {
     }
 }
 
-// Navigation
+// Navigation State
 function updateNav() {
     const navAuth = document.getElementById('navAuth');
     const navLinks = document.getElementById('navLinks');
     if (!navAuth || !navLinks) return;
 
+    const { path: activePath } = parseRoute();
     navAuth.innerHTML = '';
     navLinks.innerHTML = '';
 
-    const addNavLink = (container, text, href) => {
+    const addNavLink = (container, text, href, routeMatch, className = '') => {
         const a = document.createElement('a');
         a.textContent = text;
         a.href = href;
+        const isCurrent = routeMatch && activePath === routeMatch;
+        if (className || isCurrent) {
+            a.className = [className, isCurrent ? 'is-active' : ''].filter(Boolean).join(' ');
+        }
+        if (isCurrent) {
+            a.setAttribute?.('aria-current', 'page');
+        }
         container.appendChild(a);
     };
 
     if (currentUser) {
-        addNavLink(navLinks, 'Direktori', '#/directory');
-        addNavLink(navLinks, 'Forum Q&A', '#/forum');
-        addNavLink(navLinks, 'Profil', '#/profile');
+        addNavLink(navLinks, 'Beranda', '#/', '/');
+        addNavLink(navLinks, 'Direktori', '#/directory', '/directory');
+        addNavLink(navLinks, 'Forum Q&A', '#/forum', '/forum');
+        addNavLink(navLinks, 'Subgroup', '#/subgroups', '/subgroups');
+        addNavLink(navLinks, 'Profil', '#/profile', '/profile');
         if (currentUser.status !== 'verified') {
-            addNavLink(navLinks, 'Verifikasi', '#/verify');
+            addNavLink(navLinks, 'Verifikasi', '#/verify', '/verify');
         }
-        addNavLink(navLinks, 'Subgroup', '#/subgroups');
 
         const logoutBtn = document.createElement('button');
         logoutBtn.id = 'logoutBtn';
+        logoutBtn.type = 'button';
+        logoutBtn.className = 'btn btn-secondary btn-sm';
         logoutBtn.textContent = 'Keluar';
         logoutBtn.addEventListener('click', logout);
         navAuth.appendChild(logoutBtn);
     } else {
-        addNavLink(navLinks, 'Forum Q&A', '#/forum');
-        addNavLink(navAuth, 'Login', '#/login');
-        addNavLink(navAuth, 'Daftar', '#/register');
+        addNavLink(navLinks, 'Beranda', '#/', '/');
+        addNavLink(navLinks, 'Forum Q&A', '#/forum', '/forum');
+        addNavLink(navAuth, 'Login', '#/login', '/login', 'btn btn-secondary btn-sm');
+        addNavLink(navAuth, 'Daftar', '#/register', '/register', 'btn btn-primary btn-sm');
     }
 }
 
@@ -204,10 +298,12 @@ async function initUser() {
 }
 
 function renderRoute() {
+    closeMobileNav();
     const { path, params } = parseRoute();
     const app = document.getElementById('app');
     if (!app) return;
     app.innerHTML = '';
+    updateNav();
 
     switch (path) {
         case '/register':
@@ -257,57 +353,209 @@ function logout() {
     navigate('/');
 }
 
-// Page renderers
+// =========================================================================
+// 1. LANDING PAGE (#/)
+// =========================================================================
 function renderHome() {
     const app = document.getElementById('app');
-    const actions = currentUser
+    const heroActions = currentUser
         ? `
-            <a href="#/profile" class="btn btn-primary">Profil Saya</a>
-            <a href="#/directory" class="btn btn-primary">Lihat Direktori</a>
-            <a href="#/forum" class="btn btn-secondary">Buka Forum</a>
+            <a href="#/directory" class="btn btn-primary btn-lg">Jelajahi Direktori</a>
+            <a href="#/forum" class="btn btn-secondary btn-lg">Forum Q&amp;A</a>
+            <a href="#/profile" class="btn btn-secondary btn-lg">Profil Saya</a>
         `
         : `
-            <a href="#/register" class="btn btn-primary">Daftar Alumni</a>
-            <a href="#/directory" class="btn btn-primary">Lihat Direktori</a>
-            <a href="#/login" class="btn btn-secondary">Login</a>
+            <a href="#/register" class="btn btn-primary btn-lg">Gabung Sekarang</a>
+            <a href="#/forum" class="btn btn-secondary btn-lg">Lihat Forum Q&amp;A</a>
+            <a href="#/login" class="btn btn-secondary btn-lg">Masuk Akun</a>
         `;
 
+    const featuredWilayah = ['Jabodetabek', 'Bandung', 'Surabaya', 'Yogyakarta', 'Medan', 'Semarang', 'Makassar', 'Denpasar', 'Balikpapan'];
+    const regionChipsHtml = featuredWilayah.map(w => `<a href="#/subgroups" class="region-chip">${esc(w)}</a>`).join('');
+
     app.innerHTML = `
-        <div class="card" style="text-align: center; padding: 60px 20px;">
-            <h1>Alumni NTUST Indonesia</h1>
-            <p style="margin: 20px 0; font-size: 18px;">Jaringan Alumni National Taiwan University of Science and Technology (NTUST) di Indonesia</p>
-            <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
-                ${actions}
-            </div>
+        <div class="landing-shell">
+            <section class="landing-hero anim-fade-up" aria-labelledby="heroTitle">
+                <span class="hero-orb hero-orb-1" aria-hidden="true"></span>
+                <span class="hero-orb hero-orb-2" aria-hidden="true"></span>
+                <div class="hero-grid">
+                    <div>
+                        <span class="section-eyebrow">Ikatan Alumni Resmi • National Taiwan University of Science and Technology</span>
+                        <h1 id="heroTitle" class="hero-title">
+                            Terhubung, Berbagi Pengetahuan, &amp; <span class="hero-title-highlight">Tumbuh Bersama</span> Alumni NTUST Indonesia
+                        </h1>
+                        <p class="hero-subtitle">
+                            Portal terintegrasi untuk direktori alumni terverifikasi, forum tanya-jawab interaktif berbasis Apache Answer SSO, serta koordinasi ikatan alumni di berbagai wilayah Indonesia.
+                        </p>
+                        <div class="hero-actions">
+                            ${heroActions}
+                        </div>
+                    </div>
+
+                    <div class="hero-visual" aria-label="Sorotan Fitur Platform">
+                        <article class="hero-preview-card">
+                            <span class="feature-icon-box">${ICONS.shield}</span>
+                            <div>
+                                <div class="preview-card-title">Identitas Alumni Terverifikasi</div>
+                                <p class="preview-card-desc">Validasi domain <code>@mail.ntust.edu.tw</code> atau OTP SMS/WhatsApp untuk menjaga keamanan direktori anggota.</p>
+                            </div>
+                        </article>
+                        <article class="hero-preview-card">
+                            <span class="feature-icon-box">${ICONS.forum}</span>
+                            <div>
+                                <div class="preview-card-title">Forum Q&amp;A + OAuth2 SSO</div>
+                                <p class="preview-card-desc">Ajukan pertanyaan teknis, karier, dan riset langsung di Apache Answer dengan sekali klik SSO terverifikasi.</p>
+                            </div>
+                        </article>
+                        <article class="hero-preview-card">
+                            <span class="feature-icon-box">${ICONS.map}</span>
+                            <div>
+                                <div class="preview-card-title">Jejaring Wilayah Indonesia</div>
+                                <p class="preview-card-desc">Kolaborasi lintas angkatan &amp; jurusan bersama pengurus chapter Jabodetabek hingga Indonesia Timur.</p>
+                            </div>
+                        </article>
+                    </div>
+                </div>
+            </section>
+
+            <section class="ant-grid-4 anim-fade-up anim-delay-1" aria-label="Ringkasan Platform">
+                <article class="ant-stat-card">
+                    <div class="ant-stat-label">Verifikasi Akun</div>
+                    <div class="ant-stat-value">3 Kanal</div>
+                    <div class="ant-stat-hint">Email NTUST, SMS &amp; WhatsApp OTP</div>
+                </article>
+                <article class="ant-stat-card">
+                    <div class="ant-stat-label">Platform Diskusi</div>
+                    <div class="ant-stat-value">Q&amp;A SSO</div>
+                    <div class="ant-stat-hint">Terintegrasi Apache Answer OAuth2</div>
+                </article>
+                <article class="ant-stat-card">
+                    <div class="ant-stat-label">Cakupan Chapter</div>
+                    <div class="ant-stat-value">10+ Wilayah</div>
+                    <div class="ant-stat-hint">Koordinasi regional seluruh Indonesia</div>
+                </article>
+                <article class="ant-stat-card">
+                    <div class="ant-stat-label">Privasi &amp; Keamanan</div>
+                    <div class="ant-stat-value">Terjaga</div>
+                    <div class="ant-stat-hint">Direktori khusus alumni terverifikasi</div>
+                </article>
+            </section>
+
+            <section class="anim-fade-up anim-delay-2" aria-labelledby="featuresHeading">
+                <header class="section-heading-block">
+                    <span class="section-eyebrow">Ekosistem Digital Alumni</span>
+                    <h2 id="featuresHeading" class="section-title">Semua Kebutuhan Komunitas dalam Satu Portal</h2>
+                    <p class="subtitle">Dirancang dengan standar Ant Design untuk navigasi yang ringkas, cepat, dan nyaman di desktop maupun ponsel.</p>
+                </header>
+                <div class="ant-grid-4">
+                    <article class="feature-card">
+                        <span class="feature-icon-box">${ICONS.users}</span>
+                        <h3>Direktori Terfilter</h3>
+                        <p>Temukan sesama lulusan NTUST berdasarkan wilayah, jurusan, perusahaan, maupun bidang keahlian secara cepat.</p>
+                        <a href="#/directory" class="btn-link">Buka Direktori</a>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-icon-box">${ICONS.forum}</span>
+                        <h3>Forum Q&amp;A Apache Answer</h3>
+                        <p>Diskusi berbasis tag, voting jawaban terbaik, serta masuk otomatis menggunakan OAuth2 SSO portal alumni.</p>
+                        <a href="#/forum" class="btn-link">Jelajahi Q&amp;A</a>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-icon-box">${ICONS.map}</span>
+                        <h3>Ikatan Alumni Wilayah</h3>
+                        <p>Lihat kepengurusan subgroup daerah, admin wilayah, dan perluas kolaborasi profesional terdekat Anda.</p>
+                        <a href="#/subgroups" class="btn-link">Lihat Subgroup</a>
+                    </article>
+                    <article class="feature-card">
+                        <span class="feature-icon-box">${ICONS.shield}</span>
+                        <h3>Verifikasi Multi-Channel</h3>
+                        <p>Aktivasi status <em>verified</em> lewat tautan unik email kampus <code>@mail.ntust.edu.tw</code> atau OTP instan.</p>
+                        <a href="#/verify" class="btn-link">Pelajari Verifikasi</a>
+                    </article>
+                </div>
+            </section>
+
+            <section class="ant-steps-card anim-fade-up anim-delay-3" aria-labelledby="stepsHeading">
+                <header class="section-heading-block">
+                    <span class="section-eyebrow">Alur Bergabung</span>
+                    <h2 id="stepsHeading" class="section-title">Aktif dalam 3 Langkah Mudah</h2>
+                </header>
+                <div class="ant-steps">
+                    <div class="ant-step-item">
+                        <span class="ant-step-num">1</span>
+                        <div>
+                            <div class="ant-step-title">Daftar Akun Portal</div>
+                            <p class="ant-step-desc">Lengkapi nama, email aktif, NIM, jurusan, tahun lulus, serta domisili wilayah Indonesia.</p>
+                        </div>
+                    </div>
+                    <div class="ant-step-item">
+                        <span class="ant-step-num">2</span>
+                        <div>
+                            <div class="ant-step-title">Verifikasi Identitas</div>
+                            <p class="ant-step-desc">Konfirmasi kepemilikan akun via tautan &amp; OTP email <code>@mail.ntust.edu.tw</code>, SMS, atau WhatsApp.</p>
+                        </div>
+                    </div>
+                    <div class="ant-step-item">
+                        <span class="ant-step-num">3</span>
+                        <div>
+                            <div class="ant-step-title">Akses Direktori &amp; Q&amp;A SSO</div>
+                            <p class="ant-step-desc">Masuk otomatis ke Forum Q&amp;A Apache Answer, lengkapi riwayat karier, dan terhubung dengan jaringan alumni.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="anim-fade-up anim-delay-4" aria-labelledby="regionHeading">
+                <header class="section-heading-block">
+                    <h2 id="regionHeading" class="section-title">Jaringan Alumni di Seluruh Indonesia</h2>
+                    <p class="subtitle">Pilih wilayah untuk melihat struktur pengurus dan komunitas lokal Anda.</p>
+                </header>
+                <div class="region-chip-cloud">${regionChipsHtml}</div>
+            </section>
+
+            <section class="landing-cta anim-fade-up anim-delay-4" aria-label="Ajakan Bergabung">
+                <div>
+                    <h2>${currentUser ? 'Lanjutkan Kolaborasi di Komunitas NTUST' : 'Siap Terhubung dengan Sesama Alumni NTUST?'}</h2>
+                    <p>${currentUser ? 'Perbarui profil karier Anda atau diskusikan topik terbaru bersama alumni terverifikasi di Forum Q&A.' : 'Daftarkan akun Anda sekarang dan selesaikan verifikasi untuk membuka seluruh fitur Direktori dan Forum Q&A.'}</p>
+                </div>
+                <div class="hero-actions">
+                    ${currentUser
+                        ? '<a href="#/forum" class="btn btn-lg landing-cta-btn">Masuk Forum Q&amp;A</a>'
+                        : '<a href="#/register" class="btn btn-lg landing-cta-btn">Daftar Alumni Baru</a>'}
+                </div>
+            </section>
         </div>
     `;
 }
 
+// =========================================================================
+// 2. AUTH VIEWS (LOGIN & REGISTER)
+// =========================================================================
 function renderLogin() {
     const app = document.getElementById('app');
     app.innerHTML = `
-        <div class="card">
-            <h2 class="card-title">Login</h2>
-            <p class="subtitle">Gunakan email dan password Anda</p>
-            <div id="loginError"></div>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="loginEmail">Email</label>
-                    <input type="email" id="loginEmail" name="email" required placeholder="nama@domain.com">
+        <section class="ant-container-narrow">
+            <div class="card">
+                <h2 class="card-title">Masuk ke Portal Alumni</h2>
+                <p class="subtitle">Gunakan email dan password akun Alumni NTUST Indonesia Anda</p>
+                <div id="loginError" class="ant-mt-4"></div>
+                <form id="loginForm" class="ant-mt-4">
+                    <div class="form-group">
+                        <label for="loginEmail">Email</label>
+                        <input type="email" id="loginEmail" name="email" required placeholder="nama@domain.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="loginPassword">Password</label>
+                        <input type="password" id="loginPassword" name="password" required placeholder="Masukkan password">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Login</button>
+                </form>
+                <div class="auth-footer-links">
+                    <span>Belum punya akun? <a href="#/register" class="btn-link">Daftar sebagai alumni baru</a></span>
+                    <a href="#/verify" class="btn-link">Ingin memverifikasi akun?</a>
                 </div>
-                <div class="form-group">
-                    <label for="loginPassword">Password</label>
-                    <input type="password" id="loginPassword" name="password" required placeholder="******">
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Login</button>
-            </form>
-            <p style="margin-top: 20px; text-align: center; font-size: 14px;">
-                Belum punya akun? <a href="#/register" class="btn-link">Daftar sebagai alumni baru</a>
-            </p>
-            <p style="margin-top: 10px; text-align: center;">
-                <a href="#/verify" class="btn-link">Ingin memverifikasi akun?</a>
-            </p>
-        </div>
+            </div>
+        </section>
     `;
     document.getElementById('loginForm').addEventListener('submit', handleLogin);
 }
@@ -349,52 +597,59 @@ function renderRegister() {
     const app = document.getElementById('app');
     const wilayahOpts = WILAYAH_LIST.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join('');
     app.innerHTML = `
-        <div class="card">
-            <h2 class="card-title">Daftar Alumni Baru</h2>
-            <p class="subtitle">Daftarkan diri Anda sebagai alumni. Status Anda akan <strong>pending</strong> sampai verifikasi email selesai.</p>
-            <div id="registerError"></div>
-            <form id="registerForm">
-                <div class="form-group">
-                    <label for="regNama">Nama Lengkap</label>
-                    <input type="text" id="regNama" name="nama" required placeholder="Nama Anda">
+        <section class="ant-container-narrow">
+            <div class="card">
+                <h2 class="card-title">Daftar Alumni Baru</h2>
+                <p class="subtitle">Status awal akun adalah <strong>Pending</strong> hingga verifikasi identitas alumni selesai.</p>
+                <div id="registerError" class="ant-mt-4"></div>
+                <form id="registerForm" class="ant-mt-4">
+                    <div class="form-group">
+                        <label for="regNama">Nama Lengkap</label>
+                        <input type="text" id="regNama" name="nama" required placeholder="Nama Anda">
+                    </div>
+                    <div class="form-group">
+                        <label for="regEmail">Email</label>
+                        <input type="email" id="regEmail" name="email" required placeholder="nama@domain.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="regPassword">Password</label>
+                        <input type="password" id="regPassword" name="password" required minlength="6" maxlength="72" placeholder="6 - 72 karakter">
+                    </div>
+                    <div class="ant-grid-2">
+                        <div class="form-group">
+                            <label for="regNim">NIM NTUST</label>
+                            <input type="text" id="regNim" name="nim" placeholder="Mis. M11015001">
+                        </div>
+                        <div class="form-group">
+                            <label for="regTahunLulus">Tahun Lulus</label>
+                            <input type="number" id="regTahunLulus" name="tahun_lulus" min="1990" max="2035" placeholder="2020">
+                        </div>
+                    </div>
+                    <div class="ant-grid-2">
+                        <div class="form-group">
+                            <label for="regFakultas">Jurusan / Fakultas</label>
+                            <input type="text" id="regFakultas" name="fakultas" placeholder="Contoh: CSIE">
+                        </div>
+                        <div class="form-group">
+                            <label for="regWilayah">Wilayah</label>
+                            <select id="regWilayah" name="wilayah">
+                                <option value="">-- Pilih Wilayah --</option>
+                                ${wilayahOpts}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="regTelepon">No. Telepon / WhatsApp</label>
+                        <input type="text" id="regTelepon" name="telepon" placeholder="08123456789">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Daftar Sekarang</button>
+                </form>
+                <div class="auth-footer-links">
+                    <span>Untuk akses Direktori &amp; Forum Q&amp;A, lanjutkan verifikasi dengan <code>@mail.ntust.edu.tw</code> atau SMS/WhatsApp.</span>
+                    <span>Sudah punya akun? <a href="#/login" class="btn-link">Login di sini</a></span>
                 </div>
-                <div class="form-group">
-                    <label for="regEmail">Email</label>
-                    <input type="email" id="regEmail" name="email" required placeholder="nama@domain.com">
-                </div>
-                <div class="form-group">
-                    <label for="regPassword">Password</label>
-                    <input type="password" id="regPassword" name="password" required minlength="6" placeholder="Minimal 6 karakter">
-                </div>
-                <div class="form-group">
-                    <label for="regNim">NIM</label>
-                    <input type="text" id="regNim" name="nim" placeholder="Nomor Induk Mahasiswa">
-                </div>
-                <div class="form-group">
-                    <label for="regFakultas">Jurusan / Fakultas</label>
-                    <input type="text" id="regFakultas" name="fakultas" placeholder="Contoh: CSIE / Teknik">
-                </div>
-                <div class="form-group">
-                    <label for="regTahunLulus">Tahun Lulus</label>
-                    <input type="number" id="regTahunLulus" name="tahun_lulus" min="1990" max="2035" placeholder="2020">
-                </div>
-                <div class="form-group">
-                    <label for="regWilayah">Wilayah</label>
-                    <select id="regWilayah" name="wilayah">
-                        <option value="">-- Pilih Wilayah --</option>
-                        ${wilayahOpts}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="regTelepon">No. Telepon</label>
-                    <input type="text" id="regTelepon" name="telepon" placeholder="08123456789">
-                </div>
-                <button type="submit" class="btn btn-primary btn-block">Daftar</button>
-            </form>
-            <p style="margin-top: 15px; text-align: center; font-size: 13px;">
-                Untuk bisa bergabung di forum dan direktori, verifikasi akun menggunakan <strong>email @mail.ntust.edu.tw</strong> atau SMS/WhatsApp di halaman verifikasi.
-            </p>
-        </div>
+            </div>
+        </section>
     `;
     document.getElementById('registerForm').addEventListener('submit', handleRegister);
 }
@@ -430,6 +685,9 @@ async function handleRegister(e) {
     }
 }
 
+// =========================================================================
+// 3. VERIFICATION FLOW (EMAIL NTUST / SMS / WHATSAPP + OTP CONFIRMATION)
+// =========================================================================
 let verifyChannel = 'email';
 let verifyPhoneDraft = '';
 let verifyPhoneStep = 'input'; // 'input' | 'confirm'
@@ -461,57 +719,59 @@ function renderVerifyPage(params) {
     if (verifyChannel === 'email') {
         const defaultEmail = currentUser?.email_ntust || '';
         bodyHtml = `
-            <p class="subtitle">Masukkan email <code>@mail.ntust.edu.tw</code> Anda. Sistem akan mengirimkan tautan konfirmasi unik (berlaku 15 menit) beserta kode OTP 6 digit dari <code>ntust-alumni-verification@cerdas.club</code> ke inbox Anda.</p>
-            <form id="verifyEmailRequestForm" style="margin-top: 20px;">
+            <p class="subtitle">Masukkan email <code>@mail.ntust.edu.tw</code> Anda. Sistem akan mengirimkan tautan konfirmasi unik (berlaku 15 menit) beserta kode OTP 6 digit dari <code>ntust-alumni-verification@cerdas.club</code>.</p>
+            <form id="verifyEmailRequestForm" class="ant-mt-4">
                 <div class="form-group">
                     <label for="verifyEmail">Email <code>@mail.ntust.edu.tw</code></label>
                     <input type="email" id="verifyEmail" name="email_ntust" required value="${esc(defaultEmail)}" placeholder="nama@mail.ntust.edu.tw">
                 </div>
                 <button type="submit" class="btn btn-primary btn-block">Kirim Tautan &amp; OTP ke Email</button>
             </form>
-            <div id="verifyRequestStatus" style="margin-top: 16px;"></div>
+            <div id="verifyRequestStatus" class="ant-mt-4"></div>
         `;
     } else if (verifyPhoneStep === 'confirm') {
         const normalized = formatPhonePreview(verifyPhoneDraft);
         bodyHtml = `
             <div class="confirm-box">
                 <h4>Konfirmasi Pengiriman OTP (${esc(channelLabel(verifyChannel))})</h4>
-                <p style="margin: 10px 0;">Kode OTP 6 digit akan dikirimkan melalui <strong>${esc(channelLabel(verifyChannel))}</strong> ke nomor:</p>
-                <p style="font-size: 20px; font-weight: 700; color: #2c3e50; margin-bottom: 10px;">+${esc(normalized)}</p>
+                <p class="ant-mt-2">Kode OTP 6 digit akan dikirimkan melalui <strong>${esc(channelLabel(verifyChannel))}</strong> ke nomor:</p>
+                <p class="confirm-phone-target">+${esc(normalized)}</p>
                 <p class="subtitle">Kode OTP berlaku selama 15 menit. Pastikan nomor aktif dan dapat menerima pesan.</p>
-                <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top: 16px;">
+                <div class="ant-row ant-mt-4">
                     <button type="button" id="confirmSendOtpBtn" class="btn btn-primary">Kirim OTP Sekarang</button>
                     <button type="button" id="changePhoneBtn" class="btn btn-secondary">Ubah Nomor</button>
                 </div>
             </div>
-            <div id="verifyRequestStatus" style="margin-top: 16px;"></div>
+            <div id="verifyRequestStatus" class="ant-mt-4"></div>
         `;
     } else {
         const defaultPhone = verifyPhoneDraft || (verifyChannel === 'whatsapp' ? (currentUser?.no_wa || currentUser?.no_telp || '') : (currentUser?.no_telp || currentUser?.no_wa || ''));
         bodyHtml = `
             <p class="subtitle">Masukkan nomor HP/WhatsApp aktif untuk menerima kode OTP verifikasi melalui <strong>${esc(channelLabel(verifyChannel))}</strong>.</p>
-            <form id="verifyPhoneForm" style="margin-top: 20px;">
+            <form id="verifyPhoneForm" class="ant-mt-4">
                 <div class="form-group">
                     <label for="verifyPhoneInput">Nomor ${esc(channelLabel(verifyChannel))}</label>
                     <input type="tel" id="verifyPhoneInput" name="phone" required value="${esc(defaultPhone)}" placeholder="08123456789 atau 628123456789">
                 </div>
                 <button type="submit" class="btn btn-primary btn-block">Lanjut ke Konfirmasi</button>
             </form>
-            <div id="verifyRequestStatus" style="margin-top: 16px;"></div>
+            <div id="verifyRequestStatus" class="ant-mt-4"></div>
         `;
     }
 
-        app.innerHTML = `
+    app.innerHTML = `
+        <section class="ant-container-narrow">
             <div class="card">
-                <h2 class="card-title">Verifikasi Akun</h2>
-            <div class="channel-tabs" id="verifyChannelTabs">
-                <button type="button" data-channel="email" class="channel-tab ${verifyChannel === 'email' ? 'active' : ''}">Email NTUST</button>
-                <button type="button" data-channel="sms" class="channel-tab ${verifyChannel === 'sms' ? 'active' : ''}">SMS</button>
-                <button type="button" data-channel="whatsapp" class="channel-tab ${verifyChannel === 'whatsapp' ? 'active' : ''}">WhatsApp</button>
-            </div>
+                <h2 class="card-title">Verifikasi Akun Alumni</h2>
+                <div class="channel-tabs" id="verifyChannelTabs">
+                    <button type="button" data-channel="email" class="channel-tab ${verifyChannel === 'email' ? 'active' : ''}">Email NTUST</button>
+                    <button type="button" data-channel="sms" class="channel-tab ${verifyChannel === 'sms' ? 'active' : ''}">SMS</button>
+                    <button type="button" data-channel="whatsapp" class="channel-tab ${verifyChannel === 'whatsapp' ? 'active' : ''}">WhatsApp</button>
+                </div>
                 ${bodyHtml}
             </div>
-        `;
+        </section>
+    `;
 
     const tabsEl = document.getElementById('verifyChannelTabs');
     if (tabsEl) {
@@ -579,14 +839,16 @@ async function handleRequestEmailVerification(e) {
         if (res.ok) {
             const vToken = data.data?.verification_token || '';
             if (vToken) {
-                localStorage.setItem('verifyToken', vToken);
+                getVerifyStorage().setItem('verifyToken', vToken);
             }
             const targetMasked = data.data?.target || email;
             const confirmHref = `#/verify/confirm?token=${encodeURIComponent(vToken)}&channel=email`;
             statusEl.innerHTML = `
                 <div class="alert alert-success">
-                    Tautan verifikasi unik dan kode OTP 6 digit telah dikirim ke <strong>${esc(targetMasked)}</strong> (berlaku 15 menit). Silakan buka inbox email Anda dan klik tautan tersebut untuk memasukkan kode OTP.
-                    ${vToken ? `<div style="margin-top:8px;"><a href="${esc(confirmHref)}" class="btn-link">Sudah menerima OTP? Masukkan OTP di sini</a></div>` : ''}
+                    <div>
+                        Tautan verifikasi unik dan kode OTP 6 digit telah dikirim ke <strong>${esc(targetMasked)}</strong> (berlaku 15 menit). Silakan buka inbox email Anda dan klik tautan tersebut untuk memasukkan kode OTP.
+                        ${vToken ? `<div class="ant-mt-2"><a href="${esc(confirmHref)}" class="btn-link">Sudah menerima OTP? Masukkan OTP di sini</a></div>` : ''}
+                    </div>
                 </div>
             `;
         } else {
@@ -616,7 +878,7 @@ async function handleRequestPhoneVerification(channel, rawPhone) {
         if (res.ok) {
             const vToken = data.data?.verification_token || '';
             if (vToken) {
-                localStorage.setItem('verifyToken', vToken);
+                getVerifyStorage().setItem('verifyToken', vToken);
             }
             verifyPhoneStep = 'input';
             showAlert(data.message || 'Kode OTP berhasil dikirim', 'success');
@@ -632,28 +894,39 @@ async function handleRequestPhoneVerification(channel, rawPhone) {
 async function renderVerifyConfirmPage(params) {
     const paramToken = params ? (params.get('token') || '') : '';
     const paramChannel = params ? (params.get('channel') || '') : '';
+    const vStore = getVerifyStorage();
     if (paramToken) {
-        localStorage.setItem('verifyToken', paramToken);
+        vStore.setItem('verifyToken', paramToken);
+        if (typeof window.history?.replaceState === 'function') {
+            try {
+                const cleanUrl = paramChannel ? `#/verify/confirm?channel=${encodeURIComponent(paramChannel)}` : '#/verify/confirm';
+                window.history.replaceState(null, '', cleanUrl);
+            } catch (_) {}
+        }
     }
-    const activeToken = paramToken || localStorage.getItem('verifyToken') || '';
+    const activeToken = paramToken || vStore.getItem('verifyToken') || '';
     const app = document.getElementById('app');
 
     if (!activeToken) {
         app.innerHTML = `
-            <div class="card">
-                <h2 class="card-title">Konfirmasi Verifikasi</h2>
-                <div class="alert alert-error">Tautan atau sesi verifikasi tidak ditemukan.</div>
-                <a href="#/verify" class="btn btn-primary">Minta Verifikasi Ulang</a>
-            </div>
+            <section class="ant-container-narrow">
+                <div class="card">
+                    <h2 class="card-title">Konfirmasi Verifikasi</h2>
+                    <div class="alert alert-error ant-mt-4">Tautan atau sesi verifikasi tidak ditemukan.</div>
+                    <a href="#/verify" class="btn btn-primary">Minta Verifikasi Ulang</a>
+                </div>
+            </section>
         `;
         return;
     }
 
     app.innerHTML = `
-        <div class="card">
-            <h2 class="card-title">Konfirmasi Kode OTP</h2>
-            <div id="verifySessionInfo"><div class="empty-state">Memeriksa tautan verifikasi...</div></div>
-        </div>
+        <section class="ant-container-narrow">
+            <div class="card">
+                <h2 class="card-title">Konfirmasi Kode OTP</h2>
+                <div id="verifySessionInfo" class="ant-mt-4"><div class="empty-state">Memeriksa tautan verifikasi...</div></div>
+            </div>
+        </section>
     `;
 
     try {
@@ -663,7 +936,7 @@ async function renderVerifyConfirmPage(params) {
         if (!infoEl) return;
 
         if (!stRes.ok || !stData.data?.valid) {
-            localStorage.removeItem('verifyToken');
+            vStore.removeItem('verifyToken');
             infoEl.innerHTML = `
                 <div class="alert alert-error">${esc(stData.error || 'Tautan atau sesi verifikasi sudah tidak berlaku atau kadaluarsa.')}</div>
                 <a href="#/verify" class="btn btn-primary">Minta Verifikasi Ulang</a>
@@ -677,9 +950,9 @@ async function renderVerifyConfirmPage(params) {
         const defaultNim = currentUser?.nim || '';
 
         infoEl.innerHTML = `
-            <div class="confirm-box" style="margin-bottom: 18px;">
+            <div class="confirm-box ant-mb-4">
                 <span class="badge badge-admin">${esc(channelLabel(ch))}</span>
-                <p style="margin-top: 8px;">Tujuan: <strong>${esc(target)}</strong></p>
+                <p class="ant-mt-2">Tujuan: <strong>${esc(target)}</strong></p>
                 <p class="subtitle">Berlaku hingga: ${esc(expStr)}</p>
             </div>
             <form id="verifyOtpForm">
@@ -692,12 +965,12 @@ async function renderVerifyConfirmPage(params) {
                     <label for="verifyNim">NIM (opsional jika sudah diisi saat pendaftaran)</label>
                     <input type="text" id="verifyNim" name="nim" value="${esc(defaultNim)}" placeholder="Nomor Induk Mahasiswa">
                 </div>
-                <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <div class="ant-row">
                     <button type="submit" class="btn btn-primary">Verifikasi Akun</button>
                     <a href="#/verify" class="btn btn-secondary">Ganti Metode / Kirim Ulang</a>
                 </div>
             </form>
-            <div id="verifyOtpStatus" style="margin-top: 16px;"></div>
+            <div id="verifyOtpStatus" class="ant-mt-4"></div>
         `;
         document.getElementById('verifyOtpForm').addEventListener('submit', handleVerifyOtp);
     } catch (_) {
@@ -713,8 +986,9 @@ async function renderVerifyConfirmPage(params) {
 
 async function handleVerifyOtp(e) {
     e.preventDefault();
+    const vStore = getVerifyStorage();
     const form = new FormData(e.target);
-    const verifyToken = String(form.get('token') || localStorage.getItem('verifyToken') || '').trim();
+    const verifyToken = String(form.get('token') || vStore.getItem('verifyToken') || '').trim();
     const otp = String(form.get('otp') || '').trim();
     const nim = String(form.get('nim') || '').trim();
     const statusEl = document.getElementById('verifyOtpStatus');
@@ -728,7 +1002,7 @@ async function handleVerifyOtp(e) {
         const data = await res.json();
 
         if (res.ok) {
-            localStorage.removeItem('verifyToken');
+            vStore.removeItem('verifyToken');
             if (data.data && data.data.token) {
                 token = data.data.token;
                 localStorage.setItem('token', token);
@@ -750,6 +1024,9 @@ async function handleVerifyOtp(e) {
     }
 }
 
+// =========================================================================
+// 4. PROFILE VIEW
+// =========================================================================
 function getWilayahOptions(current) {
     return WILAYAH_LIST.map(w => {
         const selected = w === current ? ' selected' : '';
@@ -774,104 +1051,113 @@ function renderProfile() {
 
     const verifyBanner = u.status !== 'verified'
         ? `<div class="verify-banner">
-                <span>Akun Anda masih <strong>Pending</strong>. Verifikasi akun lewat email <code>@mail.ntust.edu.tw</code> atau SMS/WhatsApp untuk mengakses Direktori &amp; membuat postingan Forum.</span>
+                <span>Akun Anda masih <strong>Pending</strong>. Verifikasi akun lewat email <code>@mail.ntust.edu.tw</code> atau SMS/WhatsApp untuk mengakses Direktori &amp; Forum Q&amp;A SSO.</span>
                 <a href="#/verify" class="btn btn-primary btn-sm">Verifikasi Sekarang</a>
            </div>`
         : '';
 
     app.innerHTML = `
-        <div class="card">
-            ${verifyBanner}
-            <div class="profile-summary">
-                ${renderAvatarMarkup(u, 'avatar-preview')}
-                <div>
-                    <h2>${esc(u.nama || '-')}</h2>
-                    <p class="sub">${esc(u.email)} ${u.nim ? '• NIM: ' + esc(u.nim) : ''}</p>
-                    <span class="badge badge-${u.status === 'verified' ? 'verified' : 'pending'}">${u.status === 'verified' ? 'Terverifikasi' : 'Pending'}</span>
-                    <span class="badge badge-admin">${esc(u.role || 'member')}</span>
+        <section class="ant-container-medium">
+            <div class="card">
+                ${verifyBanner}
+                <div class="profile-summary">
+                    ${renderAvatarMarkup(u, 'avatar-preview')}
+                    <div>
+                        <h2>${esc(u.nama || '-')}</h2>
+                        <p class="sub">${esc(u.email)} ${u.nim ? '• NIM: ' + esc(u.nim) : ''}</p>
+                        <div class="ant-row">
+                            <span class="badge badge-${u.status === 'verified' ? 'verified' : 'pending'}">${u.status === 'verified' ? 'Terverifikasi' : 'Pending'}</span>
+                            <span class="badge badge-admin">${esc(u.role || 'member')}</span>
+                        </div>
+                    </div>
                 </div>
-            </div>
-            <div style="margin-top: 24px;">
+
                 <h3 class="profile-section">Profil &amp; Kontak</h3>
-                <form id="profileForm" style="background: #f8f9fa; padding: 20px; border-radius: 8px;">
+                <form id="profileForm" class="profile-form-panel">
                     <div class="form-group">
-                        <label for="pFotoFile">Foto Profil (PNG/JPG/WEBP, maks 2 MB)</label>
-                        <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
-                            <img id="profilePhotoPreview" class="avatar-preview" style="${pendingFotoProfil ? '' : 'display:none;'}" src="${esc(pendingFotoProfil)}" alt="Preview Foto">
+                        <label for="pFotoFile">Foto Profil (PNG/JPG/WEBP/GIF, maks 2 MB)</label>
+                        <div class="avatar-row">
+                            <img id="profilePhotoPreview" class="avatar-preview ${pendingFotoProfil ? '' : 'is-hidden'}" src="${esc(pendingFotoProfil)}" alt="Preview Foto">
                             <input type="file" id="pFotoFile" accept="image/png,image/jpeg,image/webp,image/gif">
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label for="pNama">Nama</label>
-                        <input type="text" id="pNama" name="nama" value="${esc(u.nama || '')}">
+
+                    <div class="ant-grid-2">
+                        <div class="form-group">
+                            <label for="pNama">Nama Lengkap</label>
+                            <input type="text" id="pNama" name="nama" value="${esc(u.nama || '')}">
+                        </div>
+                        <div class="form-group">
+                            <label for="pNim">NIM</label>
+                            <input type="text" id="pNim" name="nim" value="${esc(u.nim || '')}">
+                        </div>
+                        <div class="form-group">
+                            <label for="pJurusan">Jurusan</label>
+                            <input type="text" id="pJurusan" name="jurusan" value="${esc(u.jurusan || '')}">
+                        </div>
+                        <div class="form-group">
+                            <label for="pWilayah">Wilayah</label>
+                            <select id="pWilayah" name="wilayah">
+                                <option value="">-- Pilih Wilayah --</option>
+                                ${getWilayahOptions(u.wilayah)}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="pNoTelp">No. Telepon</label>
+                            <input type="text" id="pNoTelp" name="no_telp" value="${esc(u.no_telp || '')}">
+                        </div>
+                        <div class="form-group">
+                            <label for="pNoWA">No. WhatsApp</label>
+                            <input type="text" id="pNoWA" name="no_wa" value="${esc(u.no_wa || '')}">
+                        </div>
+                        <div class="form-group">
+                            <label for="pTelegram">Telegram</label>
+                            <input type="text" id="pTelegram" name="telegram" value="${esc(u.telegram || '')}">
+                        </div>
+                        <div class="form-group">
+                            <label for="pLinkedIn">LinkedIn URL</label>
+                            <input type="url" id="pLinkedIn" name="linkedin" placeholder="https://linkedin.com/in/..." value="${esc(u.linkedin || '')}">
+                        </div>
+                        <div class="form-group">
+                            <label for="pPreferensiKontak">Preferensi Kontak</label>
+                            <input type="text" id="pPreferensiKontak" name="preferensi_kontak" value="${esc(u.preferensi_kontak || '')}" placeholder="WhatsApp / Email / Telegram">
+                        </div>
+                        <div class="form-group">
+                            <label for="pStatusKeaktifan">Status Keaktifan</label>
+                            <select id="pStatusKeaktifan" name="status_keaktifan">
+                                <option value="aktif"${u.status_keaktifan === 'aktif' ? ' selected' : ''}>Aktif</option>
+                                <option value="tidak aktif"${u.status_keaktifan === 'tidak aktif' ? ' selected' : ''}>Tidak Aktif</option>
+                            </select>
+                        </div>
                     </div>
+
                     <div class="form-group">
-                        <label for="pNim">NIM</label>
-                        <input type="text" id="pNim" name="nim" value="${esc(u.nim || '')}">
+                        <label for="pBidangKeahlian">Bidang Keahlian (pisahkan dengan koma)</label>
+                        <input type="text" id="pBidangKeahlian" name="bidang_keahlian" value="${esc((u.bidang_keahlian || []).join(', '))}" placeholder="AI, Cloud, Backend">
                     </div>
+
                     <div class="form-group">
-                        <label for="pJurusan">Jurusan</label>
-                        <input type="text" id="pJurusan" name="jurusan" value="${esc(u.jurusan || '')}">
-                    </div>
-                    <div class="form-group">
-                        <label for="pNoTelp">No. Telepon</label>
-                        <input type="text" id="pNoTelp" name="no_telp" value="${esc(u.no_telp || '')}">
-                    </div>
-                    <div class="form-group">
-                        <label for="pNoWA">No. WA</label>
-                        <input type="text" id="pNoWA" name="no_wa" value="${esc(u.no_wa || '')}">
-                    </div>
-                    <div class="form-group">
-                        <label for="pTelegram">Telegram</label>
-                        <input type="text" id="pTelegram" name="telegram" value="${esc(u.telegram || '')}">
-                    </div>
-                    <div class="form-group">
-                        <label>Akun Sosmed</label>
-                        <div class="sosmed-list" style="margin-bottom: 8px;">
+                        <label>Akun Media Sosial</label>
+                        <div class="sosmed-grid">
                             <input type="text" id="pFB" name="facebook" placeholder="Facebook" value="${esc(u.sosmed?.facebook || '')}">
                             <input type="text" id="pIG" name="instagram" placeholder="Instagram" value="${esc(u.sosmed?.instagram || '')}">
                             <input type="text" id="pTwitter" name="twitter" placeholder="Twitter/X" value="${esc(u.sosmed?.twitter || '')}">
                             <input type="text" id="pThreads" name="threads" placeholder="Threads" value="${esc(u.sosmed?.threads || '')}">
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label for="pLinkedIn">LinkedIn URL</label>
-                        <input type="url" id="pLinkedIn" name="linkedin" placeholder="https://linkedin.com/in/..." value="${esc(u.linkedin || '')}">
-                    </div>
-                    <div class="form-group">
-                        <label for="pBidangKeahlian">Bidang Keahlian (pisahkan dengan koma)</label>
-                        <input type="text" id="pBidangKeahlian" name="bidang_keahlian" value="${esc((u.bidang_keahlian || []).join(', '))}" placeholder="AI, Cloud, Backend">
-                    </div>
-                    <div class="form-group">
-                        <label for="pPreferensiKontak">Preferensi Kontak</label>
-                        <input type="text" id="pPreferensiKontak" name="preferensi_kontak" value="${esc(u.preferensi_kontak || '')}" placeholder="WhatsApp / Email / Telegram">
-                    </div>
-                    <div class="form-group">
-                        <label for="pStatusKeaktifan">Status Keaktifan</label>
-                        <select id="pStatusKeaktifan" name="status_keaktifan">
-                            <option value="aktif"${u.status_keaktifan === 'aktif' ? ' selected' : ''}>Aktif</option>
-                            <option value="tidak aktif"${u.status_keaktifan === 'tidak aktif' ? ' selected' : ''}>Tidak Aktif</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="pWilayah">Wilayah</label>
-                        <select id="pWilayah" name="wilayah">
-                            <option value="">-- Pilih Wilayah --</option>
-                            ${getWilayahOptions(u.wilayah)}
-                        </select>
-                    </div>
-                    <button type="submit" id="saveProfileBtn" class="btn btn-primary" style="margin-top: 12px;">Simpan Profil</button>
+
+                    <button type="submit" id="saveProfileBtn" class="btn btn-primary">Simpan Profil</button>
                 </form>
 
-                <h3 class="profile-section" style="margin-top: 24px;">Pekerjaan</h3>
+                <h3 class="profile-section">Pekerjaan</h3>
                 <div class="edu-field" id="pekerjaanDisplay"></div>
-                <button type="button" class="btn btn-link" id="editPekerjaan">Edit Pekerjaan</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="editPekerjaan">Edit Pekerjaan</button>
 
-                <h3 class="profile-section" style="margin-top: 24px;">Pendidikan di NTUST</h3>
+                <h3 class="profile-section">Pendidikan di NTUST</h3>
                 <div class="edu-field" id="pendidikanDisplay"></div>
-                <button type="button" class="btn btn-link" id="editPendidikan">Edit Pendidikan NTUST</button>
+                <button type="button" class="btn btn-secondary btn-sm" id="editPendidikan">Edit Pendidikan NTUST</button>
             </div>
-        </div>
+        </section>
     `;
 
     document.getElementById('pFotoFile').addEventListener('change', handlePhotoSelect);
@@ -908,7 +1194,7 @@ function handlePhotoSelect(e) {
         const preview = document.getElementById('profilePhotoPreview');
         if (preview) {
             preview.src = dataUrl;
-            preview.style.display = 'block';
+            preview.classList?.remove('is-hidden');
         }
     };
     reader.readAsDataURL(file);
@@ -931,28 +1217,30 @@ function renderPekerjaanDisplay(user) {
 function renderPekerjaanEdit(user) {
     const pekerjaan = user?.pekerjaan || {};
     document.getElementById('pekerjaanDisplay').innerHTML = `
-        <form id="pekerjaanForm">
-            <div class="form-group">
-                <label for="pInstitusi">Institusi</label><input type="text" id="pInstitusi" name="institusi" value="${esc(pekerjaan.institusi || '')}">
+        <form id="pekerjaanForm" class="ant-stack">
+            <div class="ant-grid-2">
+                <div class="form-group">
+                    <label for="pInstitusi">Institusi</label><input type="text" id="pInstitusi" name="institusi" value="${esc(pekerjaan.institusi || '')}">
+                </div>
+                <div class="form-group">
+                    <label for="pIndustri">Jenis Industri</label><input type="text" id="pIndustri" name="jenis_industri" value="${esc(pekerjaan.jenis_industri || '')}">
+                </div>
+                <div class="form-group">
+                    <label for="pJabatan">Jabatan</label><input type="text" id="pJabatan" name="jabatan" value="${esc(pekerjaan.jabatan || '')}">
+                </div>
+                <div class="form-group">
+                    <label for="pAlamatKantor">Alamat Kantor</label><input type="text" id="pAlamatKantor" name="alamat_kantor" value="${esc(pekerjaan.alamat_kantor || '')}">
+                </div>
+                <div class="form-group">
+                    <label for="pTelpKantor">Telp Kantor</label><input type="text" id="pTelpKantor" name="telp_kantor" value="${esc(pekerjaan.telp_kantor || '')}">
+                </div>
+                <div class="form-group">
+                    <label for="pEmailKerja">Email Kerja</label><input type="email" id="pEmailKerja" name="email_kerja" value="${esc(pekerjaan.email_kerja || '')}">
+                </div>
             </div>
-            <div class="form-group">
-                <label for="pIndustri">Jenis Industri</label><input type="text" id="pIndustri" name="jenis_industri" value="${esc(pekerjaan.jenis_industri || '')}">
-            </div>
-            <div class="form-group">
-                <label for="pJabatan">Jabatan</label><input type="text" id="pJabatan" name="jabatan" value="${esc(pekerjaan.jabatan || '')}">
-            </div>
-            <div class="form-group">
-                <label for="pAlamatKantor">Alamat Kantor</label><input type="text" id="pAlamatKantor" name="alamat_kantor" value="${esc(pekerjaan.alamat_kantor || '')}">
-            </div>
-            <div class="form-group">
-                <label for="pTelpKantor">Telp Kantor</label><input type="text" id="pTelpKantor" name="telp_kantor" value="${esc(pekerjaan.telp_kantor || '')}">
-            </div>
-            <div class="form-group">
-                <label for="pEmailKerja">Email Kerja</label><input type="email" id="pEmailKerja" name="email_kerja" value="${esc(pekerjaan.email_kerja || '')}">
-            </div>
-            <div style="display:flex; gap:10px;">
-                <button type="submit" class="btn btn-primary">Simpan Pekerjaan</button>
-                <button type="button" id="cancelPekerjaan" class="btn btn-secondary">Batal</button>
+            <div class="ant-row">
+                <button type="submit" class="btn btn-primary btn-sm">Simpan Pekerjaan</button>
+                <button type="button" id="cancelPekerjaan" class="btn btn-secondary btn-sm">Batal</button>
             </div>
         </form>
     `;
@@ -1002,25 +1290,27 @@ function renderPendidikanDisplay(user) {
 function renderPendidikanEdit(user) {
     const edu = user?.pendidikan_ntust || {};
     document.getElementById('pendidikanDisplay').innerHTML = `
-        <form id="pendidikanForm">
-            <div class="form-group">
-                <label for="eduFakultas">Fakultas</label><input type="text" id="eduFakultas" name="fakultas" value="${esc(edu.fakultas || '')}">
-            </div>
-            <div class="form-group">
-                <label for="eduJurusan">Jurusan</label><input type="text" id="eduJurusan" name="jurusan" value="${esc(edu.jurusan || '')}">
-            </div>
-            <div class="form-group">
-                <label for="eduTahunMasuk">Tahun Masuk</label><input type="number" id="eduTahunMasuk" name="tahun_masuk" value="${esc(edu.tahun_masuk || '')}">
-            </div>
-            <div class="form-group">
-                <label for="eduTahunLulus">Tahun Lulus</label><input type="number" id="eduTahunLulus" name="tahun_lulus_studi" value="${esc(edu.tahun_lulus_studi || '')}">
+        <form id="pendidikanForm" class="ant-stack">
+            <div class="ant-grid-2">
+                <div class="form-group">
+                    <label for="eduFakultas">Fakultas</label><input type="text" id="eduFakultas" name="fakultas" value="${esc(edu.fakultas || '')}">
+                </div>
+                <div class="form-group">
+                    <label for="eduJurusan">Jurusan</label><input type="text" id="eduJurusan" name="jurusan" value="${esc(edu.jurusan || '')}">
+                </div>
+                <div class="form-group">
+                    <label for="eduTahunMasuk">Tahun Masuk</label><input type="number" id="eduTahunMasuk" name="tahun_masuk" value="${esc(edu.tahun_masuk || '')}">
+                </div>
+                <div class="form-group">
+                    <label for="eduTahunLulus">Tahun Lulus</label><input type="number" id="eduTahunLulus" name="tahun_lulus_studi" value="${esc(edu.tahun_lulus_studi || '')}">
+                </div>
             </div>
             <div class="form-group">
                 <label for="eduSupervisor">Supervisor</label><input type="text" id="eduSupervisor" name="supervisor" value="${esc(edu.supervisor || '')}">
             </div>
-            <div style="display:flex; gap:10px;">
-                <button type="submit" class="btn btn-primary">Simpan Pendidikan</button>
-                <button type="button" id="cancelPendidikan" class="btn btn-secondary">Batal</button>
+            <div class="ant-row">
+                <button type="submit" class="btn btn-primary btn-sm">Simpan Pendidikan</button>
+                <button type="button" id="cancelPendidikan" class="btn btn-secondary btn-sm">Batal</button>
             </div>
         </form>
     `;
@@ -1056,6 +1346,11 @@ async function handlePendidikanSave(e) {
 async function handleProfileSave(e) {
     e.preventDefault();
     const form = new FormData(e.target);
+    const linkedinRaw = String(form.get('linkedin') || '').trim();
+    if (linkedinRaw && !safeUrl(linkedinRaw)) {
+        showAlert('URL LinkedIn harus menggunakan http:// atau https:// yang valid', 'error');
+        return;
+    }
     const bidangStr = String(form.get('bidang_keahlian') || '');
     const bidang_keahlian = bidangStr.split(',').map(s => s.trim()).filter(Boolean);
 
@@ -1073,7 +1368,7 @@ async function handleProfileSave(e) {
             threads: String(form.get('threads') || '').trim(),
         },
         foto_profil: pendingFotoProfil || '',
-        linkedin: String(form.get('linkedin') || '').trim(),
+        linkedin: linkedinRaw,
         bidang_keahlian,
         preferensi_kontak: String(form.get('preferensi_kontak') || '').trim(),
         status_keaktifan: String(form.get('status_keaktifan') || '').trim(),
@@ -1096,41 +1391,49 @@ async function handleProfileSave(e) {
     }
 }
 
-// Directory
+// =========================================================================
+// 5. VERIFIED ALUMNI DIRECTORY
+// =========================================================================
 async function renderDirectory() {
     const app = document.getElementById('app');
 
     if (!currentUser) {
         app.innerHTML = `
-            <div class="card">
-                <h2 class="card-title">Direktori Alumni</h2>
-                <p style="margin: 12px 0;">Silakan login terlebih dahulu untuk mengakses direktori alumni.</p>
-                <a href="#/login" class="btn btn-primary">Login</a>
-            </div>
+            <section class="ant-container-narrow">
+                <div class="card">
+                    <h2 class="card-title">Direktori Alumni</h2>
+                    <p class="subtitle">Silakan login terlebih dahulu untuk mengakses direktori alumni.</p>
+                    <div class="ant-mt-4"><a href="#/login" class="btn btn-primary">Login</a></div>
+                </div>
+            </section>
         `;
         return;
     }
 
     if (currentUser.status !== 'verified') {
         app.innerHTML = `
-            <div class="card">
-                <h2 class="card-title">Direktori Alumni</h2>
-                <p style="margin: 12px 0;">Direktori alumni hanya dapat diakses oleh alumni yang telah terverifikasi email <code>@mail.ntust.edu.tw</code>.</p>
-                <a href="#/verify" class="btn btn-primary">Verifikasi Akun</a>
-            </div>
+            <section class="ant-container-narrow">
+                <div class="card">
+                    <h2 class="card-title">Direktori Alumni</h2>
+                    <p class="subtitle">Direktori alumni hanya dapat diakses oleh alumni yang telah terverifikasi email <code>@mail.ntust.edu.tw</code> atau OTP.</p>
+                    <div class="ant-mt-4"><a href="#/verify" class="btn btn-primary">Verifikasi Akun</a></div>
+                </div>
+            </section>
         `;
         return;
     }
 
     app.innerHTML = `
         <div class="section-header">
-            <h3>Direktori Alumni</h3>
-            <span id="dirSummary" style="color: #7f8c8d; font-size: 14px;">Alumni Terverifikasi</span>
+            <div>
+                <h3>Direktori Alumni</h3>
+                <span id="dirSummary" class="subtitle">Alumni Terverifikasi</span>
+            </div>
         </div>
         <form id="dirFilterForm" class="directory-controls">
-            <input type="text" id="dirSearchInput" name="q" value="${esc(dirState.q)}" placeholder="Cari nama, NIM, perusahaan, jabatan...">
-            <input type="text" id="dirJurusanInput" name="jurusan" value="${esc(dirState.jurusan)}" placeholder="Filter jurusan (mis. CSIE)">
-            <select id="dirSortSelect" name="sort">
+            <input type="text" class="ant-input" id="dirSearchInput" name="q" value="${esc(dirState.q)}" placeholder="Cari nama, NIM, perusahaan, jabatan...">
+            <input type="text" class="ant-input" id="dirJurusanInput" name="jurusan" value="${esc(dirState.jurusan)}" placeholder="Filter jurusan (mis. CSIE)">
+            <select class="ant-select" id="dirSortSelect" name="sort">
                 <option value="nama_asc"${dirState.sort === 'nama_asc' ? ' selected' : ''}>Nama A-Z</option>
                 <option value="nama_desc"${dirState.sort === 'nama_desc' ? ' selected' : ''}>Nama Z-A</option>
             </select>
@@ -1187,7 +1490,7 @@ async function loadDirectory() {
     if (!listEl) return;
 
     listEl.className = '';
-    listEl.innerHTML = '<div class="empty-state">Memuat...</div>';
+    listEl.innerHTML = '<div class="empty-state">Memuat direktori...</div>';
     if (pageEl) pageEl.innerHTML = '';
 
     const qs = new URLSearchParams();
@@ -1223,13 +1526,13 @@ async function loadDirectory() {
         listEl.className = 'alumni-grid';
         listEl.innerHTML = '';
         alumni.forEach(a => {
-            const card = document.createElement('div');
+            const card = document.createElement('article');
             card.className = 'alumni-card';
             card.innerHTML = `
-                <div style="display:flex; align-items:center; gap:12px; margin-bottom:8px;">
+                <div class="alumni-card-top">
                     ${renderAvatarMarkup(a, 'avatar-thumb')}
                     <div>
-                        <h4 class="alumni-card-name" style="cursor:pointer; text-decoration:underline;">${esc(a.nama || '-')}</h4>
+                        <h4 class="alumni-card-name">${esc(a.nama || '-')}</h4>
                         <div class="wilayah">${esc(a.wilayah || '-')} ${a.jurusan ? '• ' + esc(a.jurusan) : ''}</div>
                     </div>
                 </div>
@@ -1295,38 +1598,42 @@ function showAlumniDetail(alumni) {
         : esc(alumni.jurusan || '-');
 
     app.innerHTML = `
-        <div class="card">
-            <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
-                ${renderAvatarMarkup(alumni, 'avatar-preview')}
-                <div>
-                    <h2 class="card-title">${esc(alumni.nama || '-')}</h2>
-                    <p class="subtitle">${esc(alumni.wilayah || '-')} • ${esc(alumni.role || 'member')}</p>
+        <section class="ant-container-medium">
+            <div class="card">
+                <div class="profile-summary">
+                    ${renderAvatarMarkup(alumni, 'avatar-preview')}
+                    <div>
+                        <h2 class="card-title">${esc(alumni.nama || '-')}</h2>
+                        <p class="subtitle">${esc(alumni.wilayah || '-')} • ${esc(alumni.role || 'member')}</p>
+                    </div>
                 </div>
-            </div>
-            <div class="sosmed-list" style="margin: 12px 0;">
-                ${alumni.email ? `<span>Email: ${esc(alumni.email)}</span>` : ''}
-                ${alumni.no_wa ? `<span>WA: ${esc(alumni.no_wa)}</span>` : ''}
-                ${alumni.telegram ? `<span>Telegram: ${esc(alumni.telegram)}</span>` : ''}
-                ${linkedinHref ? `<a href="${esc(linkedinHref)}" target="_blank" rel="noopener noreferrer" style="color: #3498db;">LinkedIn</a>` : ''}
-            </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;">
-                <div>
-                    <p><strong>Wilayah:</strong> ${esc(alumni.wilayah || '-')}</p>
-                    <p><strong>NIM:</strong> ${esc(alumni.nim || '-')}</p>
-                    <p><strong>Bidang Keahlian:</strong> ${esc((alumni.bidang_keahlian || []).join(', ') || '-')}</p>
+                <div class="sosmed-list ant-mt-4">
+                    ${alumni.email ? `<span class="badge badge-verified">Email: ${esc(alumni.email)}</span>` : ''}
+                    ${alumni.no_wa ? `<span class="badge badge-verified">WA: ${esc(alumni.no_wa)}</span>` : ''}
+                    ${alumni.telegram ? `<span class="badge badge-admin">Telegram: ${esc(alumni.telegram)}</span>` : ''}
+                    ${linkedinHref ? `<a href="${esc(linkedinHref)}" target="_blank" rel="noopener noreferrer" class="btn-link">Profil LinkedIn</a>` : ''}
                 </div>
-                <div>
-                    <p><strong>Pekerjaan:</strong><br>${pekerjaanText}</p>
-                    <p><strong>Pendidikan:</strong><br>${pendidikanText}</p>
+                <div class="alumni-detail-grid">
+                    <div class="detail-panel">
+                        <p><strong>Wilayah:</strong> ${esc(alumni.wilayah || '-')}</p>
+                        <p><strong>NIM:</strong> ${esc(alumni.nim || '-')}</p>
+                        <p><strong>Bidang Keahlian:</strong> ${esc((alumni.bidang_keahlian || []).join(', ') || '-')}</p>
+                    </div>
+                    <div class="detail-panel">
+                        <p><strong>Pekerjaan:</strong> ${pekerjaanText}</p>
+                        <p><strong>Pendidikan NTUST:</strong> ${pendidikanText}</p>
+                    </div>
                 </div>
+                <button type="button" id="backToDirBtn" class="btn btn-secondary">Kembali ke Direktori</button>
             </div>
-            <button type="button" id="backToDirBtn" class="btn btn-secondary">Kembali</button>
-        </div>
+        </section>
     `;
     document.getElementById('backToDirBtn').addEventListener('click', () => navigate('/directory'));
 }
 
-// Forum Q&A (Apache Answer Integration + SSO)
+// =========================================================================
+// 6. FORUM Q&A (APACHE ANSWER INTEGRATION + OAUTH2 SSO)
+// =========================================================================
 let qaOrder = 'newest';
 
 async function getAnswerSsoUrl() {
@@ -1352,7 +1659,7 @@ async function renderForum() {
     const isVerified = currentUser && currentUser.status === 'verified';
 
     app.innerHTML = `
-        <div class="section-header" style="flex-wrap: wrap; gap: 12px;">
+        <div class="section-header">
             <div>
                 <h3>Forum Q&amp;A Alumni NTUST</h3>
                 <p class="subtitle">Ditenagai oleh Apache Answer • Tanya jawab, voting, tag, &amp; solusi terkurasi</p>
@@ -1374,9 +1681,9 @@ async function renderForum() {
     const hintEl = document.getElementById('forumHint');
     if (hintEl) {
         if (!currentUser) {
-            hintEl.innerHTML = '<div class="alert alert-info">Login dan verifikasi akun Anda untuk masuk otomatis (SSO) dan mengajukan pertanyaan di Q&amp;A. <a href="#/login" class="btn-link">Login</a></div>';
+            hintEl.innerHTML = '<div class="alert alert-info"><span>Login dan verifikasi akun Anda untuk masuk otomatis (SSO) dan mengajukan pertanyaan di Q&amp;A.</span><a href="#/login" class="btn-link">Login</a></div>';
         } else if (!isVerified) {
-            hintEl.innerHTML = '<div class="alert alert-info">Verifikasi akun Anda terlebih dahulu agar dapat login SSO ke Forum Q&amp;A. <a href="#/verify" class="btn-link">Verifikasi Sekarang</a></div>';
+            hintEl.innerHTML = '<div class="alert alert-info"><span>Verifikasi akun Anda terlebih dahulu agar dapat login SSO ke Forum Q&amp;A.</span><a href="#/verify" class="btn-link">Verifikasi Sekarang</a></div>';
         }
     }
 
@@ -1435,7 +1742,7 @@ async function loadAnswerQuestions() {
             const author = q.operator?.display_name || q.user_info?.display_name || 'Alumni';
             const createdVal = typeof q.created_at === 'number' ? new Date(q.created_at * 1000).toISOString() : q.created_at;
 
-            const card = document.createElement('div');
+            const card = document.createElement('article');
             card.className = 'qa-card';
             card.innerHTML = `
                 <div class="qa-stats">
@@ -1465,28 +1772,53 @@ async function renderOAuthAuthorize(params) {
     const scope = params ? (params.get('scope') || 'openid profile email') : 'openid profile email';
 
     if (!clientId || !redirectUri) {
-        app.innerHTML = '<div class="card"><h2 class="card-title">SSO OAuth2</h2><div class="alert alert-error">Parameter otorisasi SSO tidak lengkap.</div><a href="#/forum" class="btn btn-primary">Kembali ke Forum Q&amp;A</a></div>';
+        app.innerHTML = `
+            <section class="ant-container-narrow">
+                <div class="card">
+                    <h2 class="card-title">SSO OAuth2</h2>
+                    <div class="alert alert-error ant-mt-4">Parameter otorisasi SSO tidak lengkap.</div>
+                    <a href="#/forum" class="btn btn-primary">Kembali ke Forum Q&amp;A</a>
+                </div>
+            </section>
+        `;
+        return;
+    }
+
+    const safeRedirect = safeUrl(redirectUri);
+    const expectedOrigin = new URL(ANSWER_URL).origin;
+    if (!safeRedirect || new URL(safeRedirect).origin !== expectedOrigin) {
+        app.innerHTML = `
+            <section class="ant-container-narrow">
+                <div class="card">
+                    <h2 class="card-title">SSO OAuth2</h2>
+                    <div class="alert alert-error ant-mt-4">URL redirect tujuan SSO tidak diizinkan.</div>
+                    <a href="#/forum" class="btn btn-primary">Kembali ke Forum Q&amp;A</a>
+                </div>
+            </section>
+        `;
         return;
     }
 
     if (!currentUser) {
         app.innerHTML = `
-            <div class="card">
-                <h2 class="card-title">Login SSO Forum Q&amp;A</h2>
-                <p class="subtitle">Masuk dengan akun Alumni NTUST Indonesia untuk melanjutkan ke Forum Q&amp;A Apache Answer.</p>
-                <div id="ssoLoginError" style="margin-top: 12px;"></div>
-                <form id="ssoLoginForm" style="margin-top: 16px;">
-                    <div class="form-group">
-                        <label for="ssoEmail">Email</label>
-                        <input type="email" id="ssoEmail" name="email" required placeholder="nama@domain.com">
-                    </div>
-                    <div class="form-group">
-                        <label for="ssoPassword">Password</label>
-                        <input type="password" id="ssoPassword" name="password" required placeholder="******">
-                    </div>
-                    <button type="submit" class="btn btn-primary btn-block">Login &amp; Lanjutkan ke Q&amp;A</button>
-                </form>
-            </div>
+            <section class="ant-container-narrow">
+                <div class="card">
+                    <h2 class="card-title">Login SSO Forum Q&amp;A</h2>
+                    <p class="subtitle">Masuk dengan akun Alumni NTUST Indonesia untuk melanjutkan ke Forum Q&amp;A Apache Answer.</p>
+                    <div id="ssoLoginError" class="ant-mt-3"></div>
+                    <form id="ssoLoginForm" class="ant-mt-4">
+                        <div class="form-group">
+                            <label for="ssoEmail">Email</label>
+                            <input type="email" id="ssoEmail" name="email" required placeholder="nama@domain.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="ssoPassword">Password</label>
+                            <input type="password" id="ssoPassword" name="password" required placeholder="Password">
+                        </div>
+                        <button type="submit" class="btn btn-primary btn-block">Login &amp; Lanjutkan ke Q&amp;A</button>
+                    </form>
+                </div>
+            </section>
         `;
         document.getElementById('ssoLoginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1523,29 +1855,33 @@ async function renderOAuthAuthorize(params) {
 
     if (currentUser.status !== 'verified') {
         app.innerHTML = `
-            <div class="card">
-                <h2 class="card-title">Verifikasi Diperlukan</h2>
-                <div class="alert alert-info" style="margin-top: 12px;">Akun Anda masih berstatus <strong>Pending</strong>. Hanya alumni terverifikasi yang dapat masuk ke Forum Q&amp;A melalui SSO.</div>
-                <a href="#/verify" class="btn btn-primary">Verifikasi Akun Sekarang</a>
-            </div>
+            <section class="ant-container-narrow">
+                <div class="card">
+                    <h2 class="card-title">Verifikasi Diperlukan</h2>
+                    <div class="alert alert-info ant-mt-3">Akun Anda masih berstatus <strong>Pending</strong>. Hanya alumni terverifikasi yang dapat masuk ke Forum Q&amp;A melalui SSO.</div>
+                    <a href="#/verify" class="btn btn-primary">Verifikasi Akun Sekarang</a>
+                </div>
+            </section>
         `;
         return;
     }
 
     app.innerHTML = `
-        <div class="card">
-            <h2 class="card-title">Otorisasi Login SSO Forum Q&amp;A</h2>
-            <p class="subtitle">Aplikasi <strong>Forum Q&amp;A Apache Answer</strong> (${esc(ANSWER_URL)}) meminta izin masuk menggunakan akun terverifikasi Anda:</p>
-            <div class="confirm-box" style="margin: 16px 0;">
-                <p><strong>Nama:</strong> ${esc(currentUser.nama)}</p>
-                <p><strong>Email:</strong> ${esc(currentUser.email)}</p>
+        <section class="ant-container-narrow">
+            <div class="card">
+                <h2 class="card-title">Otorisasi Login SSO Forum Q&amp;A</h2>
+                <p class="subtitle">Aplikasi <strong>Forum Q&amp;A Apache Answer</strong> (${esc(ANSWER_URL)}) meminta izin masuk menggunakan akun terverifikasi Anda:</p>
+                <div class="confirm-box ant-mb-4">
+                    <p><strong>Nama:</strong> ${esc(currentUser.nama)}</p>
+                    <p><strong>Email:</strong> ${esc(currentUser.email)}</p>
+                </div>
+                <div id="oauthAuthStatus" class="ant-mb-4"></div>
+                <div class="ant-row">
+                    <button type="button" id="confirmOAuthBtn" class="btn btn-primary">Izinkan &amp; Masuk ke Forum Q&amp;A</button>
+                    <a href="#/forum" class="btn btn-secondary">Batal</a>
+                </div>
             </div>
-            <div id="oauthAuthStatus" style="margin-bottom: 14px;"></div>
-            <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                <button type="button" id="confirmOAuthBtn" class="btn btn-primary">Izinkan &amp; Masuk ke Forum Q&amp;A</button>
-                <a href="#/forum" class="btn btn-secondary">Batal</a>
-            </div>
-        </div>
+        </section>
     `;
 
     const confirmBtn = document.getElementById('confirmOAuthBtn');
@@ -1593,14 +1929,19 @@ function formatDate(dateStr) {
     });
 }
 
-// Subgroup management
+// =========================================================================
+// 7. SUBGROUPS MANAGEMENT
+// =========================================================================
 async function renderSubgroups() {
     if (!currentUser) { navigate('/login'); return; }
     const isSuperAdmin = currentUser.role === 'super_admin';
     const app = document.getElementById('app');
     app.innerHTML = `
         <div class="section-header">
-            <h3>Subgroup Ikatan Alumni Wilayah</h3>
+            <div>
+                <h3>Subgroup Ikatan Alumni Wilayah</h3>
+                <p class="subtitle">Struktur kepengurusan dan koordinator daerah Alumni NTUST di Indonesia</p>
+            </div>
             <div id="subgroupActions"></div>
         </div>
         <div id="subgroupList"></div>
@@ -1620,34 +1961,36 @@ function openCreateSubgroupForm() {
     const app = document.getElementById('app');
     const wilayahOpts = WILAYAH_LIST.map(w => `<option value="${esc(w)}">${esc(w)}</option>`).join('');
     app.innerHTML = `
-        <div class="card">
-            <h2 class="card-title">Buat Subgroup Baru</h2>
-            <form id="subgroupForm">
-                <div class="form-group">
-                    <label for="sgNama">Nama Subgroup</label>
-                    <input type="text" id="sgNama" name="nama" required placeholder="IKATAN ALUMNI NTUST WILAYAH JAKARTA">
-                </div>
-                <div class="form-group">
-                    <label for="sgWilayah">Wilayah</label>
-                    <select id="sgWilayah" name="wilayah" required>
-                        <option value="">Pilih Wilayah</option>
-                        ${wilayahOpts}
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="sgDeskripsi">Deskripsi</label>
-                    <textarea id="sgDeskripsi" name="deskripsi" rows="3"></textarea>
-                </div>
-                <div class="form-group">
-                    <label for="sgAdminId">Admin Wilayah (opsional)</label>
-                    <input type="text" id="sgAdminId" name="admin_id" placeholder="ID alumni (bisa ditunjuk nanti)">
-                </div>
-                <div style="display:flex; gap:10px;">
-                    <button type="submit" class="btn btn-primary">Simpan Subgroup</button>
-                    <button type="button" id="cancelSubgroupBtn" class="btn btn-secondary">Batal</button>
-                </div>
-            </form>
-        </div>
+        <section class="ant-container-narrow">
+            <div class="card">
+                <h2 class="card-title">Buat Subgroup Baru</h2>
+                <form id="subgroupForm" class="ant-mt-4">
+                    <div class="form-group">
+                        <label for="sgNama">Nama Subgroup</label>
+                        <input type="text" id="sgNama" name="nama" required placeholder="IKATAN ALUMNI NTUST WILAYAH JAKARTA">
+                    </div>
+                    <div class="form-group">
+                        <label for="sgWilayah">Wilayah</label>
+                        <select id="sgWilayah" name="wilayah" required>
+                            <option value="">Pilih Wilayah</option>
+                            ${wilayahOpts}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="sgDeskripsi">Deskripsi</label>
+                        <textarea id="sgDeskripsi" name="deskripsi" rows="3"></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="sgAdminId">Admin Wilayah (opsional)</label>
+                        <input type="text" id="sgAdminId" name="admin_id" placeholder="ID alumni (bisa ditunjuk nanti)">
+                    </div>
+                    <div class="ant-row">
+                        <button type="submit" class="btn btn-primary">Simpan Subgroup</button>
+                        <button type="button" id="cancelSubgroupBtn" class="btn btn-secondary">Batal</button>
+                    </div>
+                </form>
+            </div>
+        </section>
     `;
     document.getElementById('subgroupForm').addEventListener('submit', handleCreateSubgroup);
     document.getElementById('cancelSubgroupBtn').addEventListener('click', () => renderSubgroups());
@@ -1677,7 +2020,7 @@ async function handleCreateSubgroup(e) {
 async function loadSubgroups() {
     const listEl = document.getElementById('subgroupList');
     if (!listEl) return;
-    listEl.innerHTML = '<div class="empty-state">Memuat...</div>';
+    listEl.innerHTML = '<div class="empty-state">Memuat subgroup wilayah...</div>';
 
     const isSuperAdmin = currentUser?.role === 'super_admin';
     const isAdmin = currentUser?.role === 'super_admin' || currentUser?.role === 'regional_admin';
@@ -1700,7 +2043,7 @@ async function loadSubgroups() {
         listEl.className = 'alumni-grid';
         listEl.innerHTML = '';
         subs.forEach(s => {
-            const card = document.createElement('div');
+            const card = document.createElement('article');
             card.className = 'alumni-card';
             const pengurusList = Array.isArray(s.pengurus) && s.pengurus.length > 0
                 ? `<div class="pengurus-list">
@@ -1712,19 +2055,17 @@ async function loadSubgroups() {
             card.innerHTML = `
                 <h4>${esc(s.nama)}</h4>
                 <div class="wilayah">${esc(s.wilayah)}</div>
-                ${s.deskripsi ? `<p style="font-size: 13px; color: #555;">${esc(s.deskripsi)}</p>` : ''}
+                ${s.deskripsi ? `<p class="subgroup-desc">${esc(s.deskripsi)}</p>` : ''}
                 ${s.admin_id ? `<span class="badge badge-admin">Admin: ${esc(s.admin_id.substring(0, 12))}</span>` : ''}
                 ${pengurusList}
             `;
 
             if (isAdmin) {
                 const appointForm = document.createElement('form');
-                appointForm.style.marginTop = '12px';
+                appointForm.className = 'appoint-form';
                 appointForm.innerHTML = `
-                    <div style="display:flex; gap:6px;">
-                        <input type="text" name="alumni_id" required placeholder="ID Alumni" style="flex:1; padding:6px 8px; border:1px solid #ddd; border-radius:6px; font-size:13px;">
-                        <button type="submit" class="btn btn-primary btn-sm">Tunjuk Admin</button>
-                    </div>
+                    <input type="text" name="alumni_id" class="appoint-input" required placeholder="ID Alumni">
+                    <button type="submit" class="btn btn-primary btn-sm">Tunjuk Admin</button>
                 `;
                 appointForm.addEventListener('submit', async (ev) => {
                     ev.preventDefault();
@@ -1746,7 +2087,7 @@ async function loadSubgroups() {
 
             if (isSuperAdmin) {
                 const actionsDiv = document.createElement('div');
-                actionsDiv.style.marginTop = '10px';
+                actionsDiv.className = 'ant-mt-3';
                 const delBtn = document.createElement('button');
                 delBtn.type = 'button';
                 delBtn.className = 'btn btn-danger btn-sm';
@@ -1774,8 +2115,9 @@ async function deleteSubgroup(id) {
     }
 }
 
-// Initialize
+// Bootstrap Application
 window.addEventListener('hashchange', renderRoute);
+initHeaderControls();
 checkHealth();
 if (typeof setInterval === 'function') {
     setInterval(checkHealth, 30000);

@@ -134,6 +134,8 @@ func isAllowedVerificationEmail(emailAddr string, domains []string) bool {
 
 // RequestVerification meminta pengiriman tautan &/atau OTP verifikasi lewat email, sms, atau whatsapp.
 func (h *VerificationHandler) RequestVerification(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	userIDVal, _ := c.Get("user_id")
 	userID, ok := userIDVal.(string)
 	if !ok || userID == "" {
@@ -285,6 +287,8 @@ func (h *VerificationHandler) RequestVerification(c *gin.Context) {
 
 // VerificationStatus memeriksa validitas dan masa berlaku tautan/sesi verifikasi.
 func (h *VerificationHandler) VerificationStatus(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	if allowed, _ := h.rateLimiter.CheckAndIncrement("verify-status-ip:"+c.ClientIP(), 20); !allowed {
 		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak permintaan. Coba lagi dalam 15 menit"})
 		return
@@ -329,6 +333,8 @@ func (h *VerificationHandler) VerificationStatus(c *gin.Context) {
 
 // Verify memverifikasi alumni dengan token, OTP, dan NIM (opsional jika NIM sudah ada).
 func (h *VerificationHandler) Verify(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	if allowed, _ := h.rateLimiter.CheckAndIncrement("verify-ip:"+c.ClientIP(), 20); !allowed {
 		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak percobaan verifikasi. Coba lagi dalam 15 menit"})
 		return
@@ -340,7 +346,14 @@ func (h *VerificationHandler) Verify(c *gin.Context) {
 		return
 	}
 
-	alumni, err := h.database.FindAlumniByVerificationToken(c.Request.Context(), strings.TrimSpace(req.Token))
+	reqToken := strings.TrimSpace(req.Token)
+	reqOTP := strings.TrimSpace(req.OTP)
+	if reqToken == "" || reqOTP == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Token verifikasi dan kode OTP wajib diisi"})
+		return
+	}
+
+	alumni, err := h.database.FindAlumniByVerificationToken(c.Request.Context(), reqToken)
 	if err != nil || alumni == nil {
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Token verifikasi tidak valid"})
 		return

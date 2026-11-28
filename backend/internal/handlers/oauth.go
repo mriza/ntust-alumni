@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"net/url"
+	"path"
 	"strings"
 	"sync"
 	"time"
@@ -56,7 +57,15 @@ func NewOAuthHandler(database db.Store, cfg OAuthConfig) *OAuthHandler {
 }
 
 func isAllowedRedirectURI(rawRedirect, allowedPrefix string) bool {
-	u, err := url.Parse(strings.TrimSpace(rawRedirect))
+	trimmed := strings.TrimSpace(rawRedirect)
+	lowerRaw := strings.ToLower(trimmed)
+	if trimmed == "" || strings.ContainsAny(trimmed, "\\\r\n") ||
+		strings.Contains(lowerRaw, "%2e") ||
+		strings.Contains(lowerRaw, "%2f") ||
+		strings.Contains(lowerRaw, "%5c") {
+		return false
+	}
+	u, err := url.Parse(trimmed)
 	p, errP := url.Parse(strings.TrimSpace(allowedPrefix))
 	if err != nil || errP != nil || u.Scheme == "" || u.Host == "" || u.User != nil {
 		return false
@@ -67,7 +76,10 @@ func isAllowedRedirectURI(rawRedirect, allowedPrefix string) bool {
 	if strings.Contains(u.Path, "..") {
 		return false
 	}
-	return strings.HasPrefix(u.Path, p.Path)
+	cleaned := path.Clean(u.Path)
+	prefixBase := strings.TrimRight(p.Path, "/")
+	return strings.HasPrefix(u.Path, p.Path) &&
+		(cleaned == prefixBase || strings.HasPrefix(cleaned, prefixBase+"/"))
 }
 
 func constantTimeEqual(a, b string) bool {
@@ -84,6 +96,8 @@ type oauthAuthorizeRequest struct {
 
 // Authorize menerbitkan authorization code sekali pakai (TTL 2 menit) bagi alumni verified.
 func (h *OAuthHandler) Authorize(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	if h.cfg.ClientID == "" || h.cfg.ClientSecret == "" {
 		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "OAuth2 SSO belum dikonfigurasi"})
 		return
@@ -175,6 +189,8 @@ func (h *OAuthHandler) Authorize(c *gin.Context) {
 
 // Token menukar authorization code menjadi scoped access token JWT (berlaku 5 menit).
 func (h *OAuthHandler) Token(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	if allowed, _ := h.rateLimiter.CheckAndIncrement("oauth-token-ip:"+c.ClientIP(), 30); !allowed {
 		c.JSON(http.StatusTooManyRequests, gin.H{"error": "rate_limit_exceeded"})
 		return
@@ -300,6 +316,8 @@ func makeAnswerUsername(emailAddr, id string) string {
 
 // UserInfo mengembalikan profil datar JSON untuk Apache Answer connector-basic.
 func (h *OAuthHandler) UserInfo(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
 	authHeader := c.GetHeader("Authorization")
 	parts := strings.SplitN(authHeader, " ", 2)
 	if len(parts) != 2 || parts[0] != "Bearer" {

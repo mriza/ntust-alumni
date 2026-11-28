@@ -238,8 +238,17 @@ func main() {
 		superAdmin.DELETE("/subgroups/:id", subgroupHandler.DeleteSubgroup)
 	}
 
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           router,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 	log.Printf("Server berjalan di port %s", port)
-	if err := router.Run(":" + port); err != nil {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("Gagal menjalankan server: %v", err)
 	}
 }

@@ -612,3 +612,24 @@ func TestVerificationRejectsMalformedEmails(t *testing.T) {
 		t.Error("expected valid @mail.ntust.edu.tw address to be accepted")
 	}
 }
+
+func TestVerifyRejectsEmptyTokenOrOTP(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	h := NewVerificationHandler(database, &fakeEmailClient{})
+	router := gin.New()
+	router.POST("/verify", h.Verify)
+
+	for _, payload := range []string{`{"token":"","otp":"123456"}`, `{"token":"abc","otp":""}`} {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodPost, "/verify", bytes.NewBufferString(payload))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("expected 400 for payload %s, got %d", payload, w.Code)
+		}
+		if w.Header().Get("Cache-Control") != "no-store" {
+			t.Errorf("expected Cache-Control: no-store, got %q", w.Header().Get("Cache-Control"))
+		}
+	}
+}

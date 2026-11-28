@@ -60,7 +60,12 @@ func NewBrevoClient(apiKey, fromEmail, fromName string) *BrevoClient {
 		fromEmail: fromEmail,
 		fromName:  fromName,
 		baseURL:   "https://api.brevo.com",
-		client:    &http.Client{Timeout: 15 * time.Second},
+		client: &http.Client{
+			Timeout: 15 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
@@ -252,6 +253,25 @@ func (h *AlumniHandler) UpdateAlumni(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data profil tidak valid"})
 		return
+	}
+
+	req.Nama = strings.TrimSpace(req.Nama)
+	req.Nim = strings.TrimSpace(req.Nim)
+	req.Jurusan = strings.TrimSpace(req.Jurusan)
+	req.Wilayah = strings.TrimSpace(req.Wilayah)
+	req.LinkedIn = strings.TrimSpace(req.LinkedIn)
+
+	if len(req.Nama) > 200 || len(req.Nim) > 64 || len(req.Jurusan) > 150 ||
+		len(req.Wilayah) > 100 || len(req.LinkedIn) > 500 || len(req.BidangKeahianan) > 30 {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Panjang input melebihi batas yang diizinkan"})
+		return
+	}
+	if req.LinkedIn != "" {
+		u, err := url.Parse(req.LinkedIn)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "URL LinkedIn harus menggunakan http:// atau https:// yang valid"})
+			return
+		}
 	}
 
 	// Validasi foto profil (jika diupload)

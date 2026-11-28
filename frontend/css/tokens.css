@@ -1,0 +1,283 @@
+/* tokens.css - Ant Design v5 Design Tokens (Light / Dark / System) */
+
+:root,
+[data-theme="light"] {
+    color-scheme: light;
+
+    /* Brand & Primary Palette */
+    --ant-color-primary: #1677ff;
+    --ant-color-primary-hover: #4096ff;
+    --ant-color-primary-active: #0958d9;
+    --ant-color-primary-bg: #e6f4ff;
+    --ant-color-primary-bg-hover: #bae0ff;
+    --ant-color-primary-border: #91caff;
+
+    /* Semantic Status Colors */
+    --ant-color-success: #52c41a;
+    --ant-color-success-bg: #f6ffed;
+    --ant-color-success-border: #b7eb8f;
+    --ant-color-success-text: #389e0d;
+
+    --ant-color-warning: #faad14;
+    --ant-color-warning-bg: #fffbe6;
+    --ant-color-warning-border: #ffe58f;
+    --ant-color-warning-text: #d48806;
+
+    --ant-color-error: #ff4d4f;
+    --ant-color-error-hover: #ff7875;
+    --ant-color-error-bg: #fff2f0;
+    --ant-color-error-border: #ffccc7;
+    --ant-color-error-text: #cf1322;
+
+    --ant-color-info: #1677ff;
+    --ant-color-info-bg: #e6f4ff;
+    --ant-color-info-border: #91caff;
+    --ant-color-info-text: #0958d9;
+
+    --ant-color-admin: #722ed1;
+    --ant-color-admin-bg: #f9f0ff;
+    --ant-color-admin-border: #d3adf7;
+    --ant-color-admin-text: #531dab;
+
+    /* Neutral Surfaces & Typography */
+    --ant-color-bg-layout: #f5f7fa;
+    --ant-color-bg-container: #ffffff;
+    --ant-color-bg-elevated: #ffffff;
+    --ant-color-bg-subtle: #fafafa;
+    --ant-color-bg-spotlight: #f0f5ff;
+    --ant-color-bg-header: rgba(255, 255, 255, 0.86);
+    --ant-color-bg-footer: #ffffff;
+
+    --ant-color-text: rgba(0, 0, 0, 0.88);
+    --ant-color-text-secondary: rgba(0, 0, 0, 0.65);
+    --ant-color-text-tertiary: rgba(0, 0, 0, 0.45);
+    --ant-color-text-quaternary: rgba(0, 0, 0, 0.25);
+    --ant-color-text-light-solid: #ffffff;
+
+    --ant-color-border: #d9d9d9;
+    --ant-color-border-secondary: #f0f0f0;
+    --ant-color-fill-secondary: rgba(0, 0, 0, 0.06);
+    --ant-color-fill-tertiary: rgba(0, 0, 0, 0.04);
+    --ant-color-focus-ring: rgba(22, 119, 255, 0.2);
+
+    /* Decorative Landing Gradients & Patterns */
+    --ant-brand-gradient: linear-gradient(135deg, #1677ff 0%, #2f54eb 100%);
+    --ant-hero-bg: radial-gradient(1100px circle at 15% 10%, rgba(22, 119, 255, 0.14), transparent 55%),
+                     radial-gradient(900px circle at 85% 20%, rgba(114, 46, 209, 0.10), transparent 52%),
+                     linear-gradient(180deg, #ffffff 0%, #f5f7fa 100%);
+    --ant-hero-orb-primary: rgba(22, 119, 255, 0.18);
+    --ant-hero-orb-accent: rgba(114, 46, 209, 0.14);
+    --ant-hero-grid-line: rgba(22, 119, 255, 0.055);
+    --ant-cta-gradient: linear-gradient(135deg, #1677ff 0%, #0958d9 52%, #1d39c4 100%);
+    --ant-shimmer-gradient: linear-gradient(90deg, rgba(0, 0, 0, 0.05) 25%, rgba(0, 0, 0, 0.10) 37%, rgba(0, 0, 0, 0.05) 63%);
+
+    /* Typography */
+    --ant-font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'Noto Sans', sans-serif;
+    --ant-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+    --ant-font-size-xs: 12px;
+    --ant-font-size-sm: 13px;
+    --ant-font-size-base: 14px;
+    --ant-font-size-md: 15px;
+    --ant-font-size-lg: 16px;
+    --ant-font-size-xl: 20px;
+    --ant-font-size-2xl: 24px;
+    --ant-font-size-3xl: 32px;
+    --ant-font-size-display: clamp(2.1rem, 4vw, 3.15rem);
+
+    --ant-line-height-tight: 1.25;
+    --ant-line-height-base: 1.5714;
+    --ant-line-height-relaxed: 1.7;
+
+    /* Spacing Scale */
+    --ant-space-1: 4px;
+    --ant-space-2: 8px;
+    --ant-space-3: 12px;
+    --ant-space-4: 16px;
+    --ant-space-5: 20px;
+    --ant-space-6: 24px;
+    --ant-space-8: 32px;
+    --ant-space-10: 40px;
+    --ant-space-12: 48px;
+    --ant-space-16: 64px;
+
+    /* Radii */
+    --ant-radius-xs: 4px;
+    --ant-radius-sm: 6px;
+    --ant-radius-md: 8px;
+    --ant-radius-lg: 12px;
+    --ant-radius-xl: 16px;
+    --ant-radius-pill: 9999px;
+
+    /* Shadows */
+    --ant-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --ant-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+    --ant-shadow-md: 0 6px 16px rgba(0, 0, 0, 0.08), 0 3px 6px -4px rgba(0, 0, 0, 0.06);
+    --ant-shadow-lg: 0 12px 32px rgba(15, 23, 42, 0.12);
+    --ant-shadow-primary: 0 6px 18px rgba(22, 119, 255, 0.28);
+
+    /* Motion */
+    --ant-duration-fast: 150ms;
+    --ant-duration-mid: 240ms;
+    --ant-duration-slow: 420ms;
+    --ant-ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+    --ant-ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
+
+    /* Layout Constraints & Layering */
+    --ant-container-max: 1200px;
+    --ant-auth-max: 480px;
+    --ant-profile-max: 960px;
+    --ant-header-height: 64px;
+    --ant-z-header: 100;
+    --ant-z-toast: 300;
+}
+
+/* Explicit Dark Mode */
+[data-theme="dark"] {
+    color-scheme: dark;
+
+    --ant-color-primary: #1668dc;
+    --ant-color-primary-hover: #3c89e8;
+    --ant-color-primary-active: #1554ad;
+    --ant-color-primary-bg: rgba(22, 104, 220, 0.18);
+    --ant-color-primary-bg-hover: rgba(22, 104, 220, 0.28);
+    --ant-color-primary-border: #15417e;
+
+    --ant-color-success: #49aa19;
+    --ant-color-success-bg: rgba(73, 170, 25, 0.14);
+    --ant-color-success-border: #274916;
+    --ant-color-success-text: #73d13d;
+
+    --ant-color-warning: #d89614;
+    --ant-color-warning-bg: rgba(216, 150, 20, 0.14);
+    --ant-color-warning-border: #594214;
+    --ant-color-warning-text: #ffc53d;
+
+    --ant-color-error: #dc4446;
+    --ant-color-error-hover: #e86e6b;
+    --ant-color-error-bg: rgba(220, 68, 70, 0.15);
+    --ant-color-error-border: #58181c;
+    --ant-color-error-text: #ff7875;
+
+    --ant-color-info: #1668dc;
+    --ant-color-info-bg: rgba(22, 104, 220, 0.16);
+    --ant-color-info-border: #15417e;
+    --ant-color-info-text: #69b1ff;
+
+    --ant-color-admin: #9254de;
+    --ant-color-admin-bg: rgba(146, 84, 222, 0.16);
+    --ant-color-admin-border: #391085;
+    --ant-color-admin-text: #b37feb;
+
+    --ant-color-bg-layout: #0b0f17;
+    --ant-color-bg-container: #141923;
+    --ant-color-bg-elevated: #1c2331;
+    --ant-color-bg-subtle: #101520;
+    --ant-color-bg-spotlight: rgba(22, 104, 220, 0.12);
+    --ant-color-bg-header: rgba(20, 25, 35, 0.86);
+    --ant-color-bg-footer: #101520;
+
+    --ant-color-text: rgba(255, 255, 255, 0.88);
+    --ant-color-text-secondary: rgba(255, 255, 255, 0.65);
+    --ant-color-text-tertiary: rgba(255, 255, 255, 0.45);
+    --ant-color-text-quaternary: rgba(255, 255, 255, 0.25);
+    --ant-color-text-light-solid: #ffffff;
+
+    --ant-color-border: #303949;
+    --ant-color-border-secondary: #222a38;
+    --ant-color-fill-secondary: rgba(255, 255, 255, 0.08);
+    --ant-color-fill-tertiary: rgba(255, 255, 255, 0.04);
+    --ant-color-focus-ring: rgba(60, 137, 232, 0.32);
+
+    --ant-brand-gradient: linear-gradient(135deg, #1668dc 0%, #597ef7 100%);
+    --ant-hero-bg: radial-gradient(1100px circle at 15% 10%, rgba(22, 104, 220, 0.22), transparent 55%),
+                     radial-gradient(900px circle at 85% 20%, rgba(146, 84, 222, 0.16), transparent 52%),
+                     linear-gradient(180deg, #101520 0%, #0b0f17 100%);
+    --ant-hero-orb-primary: rgba(22, 104, 220, 0.22);
+    --ant-hero-orb-accent: rgba(146, 84, 222, 0.18);
+    --ant-hero-grid-line: rgba(105, 177, 255, 0.05);
+    --ant-cta-gradient: linear-gradient(135deg, #15417e 0%, #1668dc 55%, #2f54eb 100%);
+    --ant-shimmer-gradient: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.09) 37%, rgba(255, 255, 255, 0.04) 63%);
+
+    --ant-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.32);
+    --ant-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.40);
+    --ant-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.50);
+    --ant-shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.60);
+    --ant-shadow-primary: 0 6px 20px rgba(22, 104, 220, 0.35);
+}
+
+/* System Preference Dark Fallback (when user selects System) */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+
+        --ant-color-primary: #1668dc;
+        --ant-color-primary-hover: #3c89e8;
+        --ant-color-primary-active: #1554ad;
+        --ant-color-primary-bg: rgba(22, 104, 220, 0.18);
+        --ant-color-primary-bg-hover: rgba(22, 104, 220, 0.28);
+        --ant-color-primary-border: #15417e;
+
+        --ant-color-success: #49aa19;
+        --ant-color-success-bg: rgba(73, 170, 25, 0.14);
+        --ant-color-success-border: #274916;
+        --ant-color-success-text: #73d13d;
+
+        --ant-color-warning: #d89614;
+        --ant-color-warning-bg: rgba(216, 150, 20, 0.14);
+        --ant-color-warning-border: #594214;
+        --ant-color-warning-text: #ffc53d;
+
+        --ant-color-error: #dc4446;
+        --ant-color-error-hover: #e86e6b;
+        --ant-color-error-bg: rgba(220, 68, 70, 0.15);
+        --ant-color-error-border: #58181c;
+        --ant-color-error-text: #ff7875;
+
+        --ant-color-info: #1668dc;
+        --ant-color-info-bg: rgba(22, 104, 220, 0.16);
+        --ant-color-info-border: #15417e;
+        --ant-color-info-text: #69b1ff;
+
+        --ant-color-admin: #9254de;
+        --ant-color-admin-bg: rgba(146, 84, 222, 0.16);
+        --ant-color-admin-border: #391085;
+        --ant-color-admin-text: #b37feb;
+
+        --ant-color-bg-layout: #0b0f17;
+        --ant-color-bg-container: #141923;
+        --ant-color-bg-elevated: #1c2331;
+        --ant-color-bg-subtle: #101520;
+        --ant-color-bg-spotlight: rgba(22, 104, 220, 0.12);
+        --ant-color-bg-header: rgba(20, 25, 35, 0.86);
+        --ant-color-bg-footer: #101520;
+
+        --ant-color-text: rgba(255, 255, 255, 0.88);
+        --ant-color-text-secondary: rgba(255, 255, 255, 0.65);
+        --ant-color-text-tertiary: rgba(255, 255, 255, 0.45);
+        --ant-color-text-quaternary: rgba(255, 255, 255, 0.25);
+        --ant-color-text-light-solid: #ffffff;
+
+        --ant-color-border: #303949;
+        --ant-color-border-secondary: #222a38;
+        --ant-color-fill-secondary: rgba(255, 255, 255, 0.08);
+        --ant-color-fill-tertiary: rgba(255, 255, 255, 0.04);
+        --ant-color-focus-ring: rgba(60, 137, 232, 0.32);
+
+        --ant-brand-gradient: linear-gradient(135deg, #1668dc 0%, #597ef7 100%);
+        --ant-hero-bg: radial-gradient(1100px circle at 15% 10%, rgba(22, 104, 220, 0.22), transparent 55%),
+                         radial-gradient(900px circle at 85% 20%, rgba(146, 84, 222, 0.16), transparent 52%),
+                         linear-gradient(180deg, #101520 0%, #0b0f17 100%);
+        --ant-hero-orb-primary: rgba(22, 104, 220, 0.22);
+        --ant-hero-orb-accent: rgba(146, 84, 222, 0.18);
+        --ant-hero-grid-line: rgba(105, 177, 255, 0.05);
+        --ant-cta-gradient: linear-gradient(135deg, #15417e 0%, #1668dc 55%, #2f54eb 100%);
+        --ant-shimmer-gradient: linear-gradient(90deg, rgba(255, 255, 255, 0.04) 25%, rgba(255, 255, 255, 0.09) 37%, rgba(255, 255, 255, 0.04) 63%);
+
+        --ant-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.32);
+        --ant-shadow-sm: 0 2px 10px rgba(0, 0, 0, 0.40);
+        --ant-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.50);
+        --ant-shadow-lg: 0 16px 36px rgba(0, 0, 0, 0.60);
+        --ant-shadow-primary: 0 6px 20px rgba(22, 104, 220, 0.35);
+    }
+}

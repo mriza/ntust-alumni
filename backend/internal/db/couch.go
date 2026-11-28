@@ -67,7 +67,12 @@ func NewCouchDB(rawURL string) (*CouchDB, error) {
 		baseURL:  cleanURL,
 		username: username,
 		password: password,
-		client:   &http.Client{Timeout: 10 * time.Second},
+		client: &http.Client{
+			Timeout: 10 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		},
 	}
 
 	if err := c.Ping(); err != nil {
@@ -697,7 +702,7 @@ func (c *CouchDB) allDocs(ctx context.Context, dbName string, into interface{}, 
 }
 
 func (c *CouchDB) findDocs(ctx context.Context, dbName string, selector interface{}, into interface{}) error {
-	body, err := json.Marshal(map[string]interface{}{"selector": selector})
+	body, err := json.Marshal(map[string]interface{}{"selector": selector, "limit": 1000})
 	if err != nil {
 		return err
 	}

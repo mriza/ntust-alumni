@@ -276,3 +276,28 @@ func TestAppointAdminSecurityBoundaries(t *testing.T) {
 		t.Fatalf("expected 400 when trying to appoint pending alumni, got %d", wPend.Code)
 	}
 }
+
+func TestUpdateSubgroupRejectsBlankNamaOrWilayah(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	middleware.InitJWT("test-secret")
+	SetJWTKey([]byte("test-secret"))
+
+	sg := &models.Subgroup{Nama: "Jakarta", Wilayah: "Jakarta"}
+	database.SaveSubgroup(context.Background(), sg)
+
+	h := NewSubgroupHandler(database)
+	router := gin.New()
+	router.Use(middleware.AuthMiddleware(), middleware.RequireRole("super_admin"))
+	router.PUT("/subgroups/:id", h.UpdateSubgroup)
+
+	tok, _ := GenerateJWT(&models.Alumni{ID: "sa", Email: "sa@x.com", Role: "super_admin", Status: "verified"})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodPut, "/subgroups/"+sg.ID, bytes.NewBufferString(`{"nama":"   ","wilayah":"Jakarta"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+tok)
+	router.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for blank subgroup nama, got %d", w.Code)
+	}
+}

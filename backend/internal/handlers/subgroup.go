@@ -75,6 +75,14 @@ func (h *SubgroupHandler) UpdateSubgroup(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid"})
 		return
 	}
+	req.Nama = strings.TrimSpace(req.Nama)
+	req.Wilayah = strings.TrimSpace(req.Wilayah)
+	req.Deskripsi = strings.TrimSpace(req.Deskripsi)
+	req.AdminID = strings.TrimSpace(req.AdminID)
+	if req.Nama == "" || req.Wilayah == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Nama subgroup dan wilayah wajib diisi"})
+		return
+	}
 
 	subgroup, err := h.database.GetSubgroup(c.Request.Context(), id)
 	if err != nil {

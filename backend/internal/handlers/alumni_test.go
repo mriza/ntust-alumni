@@ -366,3 +366,37 @@ func TestGetAlumniByIDHidesPendingFromOtherUsers(t *testing.T) {
 		t.Fatalf("expected 404 when verified member queries pending profile by ID, got %d", w.Code)
 	}
 }
+
+func TestUpdateAlumniRejectsInvalidLinkedInAndOversizedInput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	middleware.InitJWT("test-secret")
+	SetJWTKey([]byte("test-secret"))
+
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "u1", Nama: "User", Email: "u@x.com", Role: "member", Status: "verified"})
+	h := NewAlumniHandler(database)
+	router := gin.New()
+	router.Use(middleware.AuthMiddleware())
+	router.PUT("/alumni/:id", h.UpdateAlumni)
+
+	tok, _ := GenerateJWT(&models.Alumni{ID: "u1", Email: "u@x.com", Role: "member", Status: "verified"})
+
+	wBadURL := httptest.NewRecorder()
+	reqBadURL, _ := http.NewRequest(http.MethodPut, "/alumni/u1", bytes.NewBufferString(`{"linkedin":"javascript:alert(1)"}`))
+	reqBadURL.Header.Set("Content-Type", "application/json")
+	reqBadURL.Header.Set("Authorization", "Bearer "+tok)
+	router.ServeHTTP(wBadURL, reqBadURL)
+	if wBadURL.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for javascript: LinkedIn URL, got %d", wBadURL.Code)
+	}
+
+	oversized := `{"nama":"` + strings.Repeat("A", 205) + `"}`
+	wBig := httptest.NewRecorder()
+	reqBig, _ := http.NewRequest(http.MethodPut, "/alumni/u1", bytes.NewBufferString(oversized))
+	reqBig.Header.Set("Content-Type", "application/json")
+	reqBig.Header.Set("Authorization", "Bearer "+tok)
+	router.ServeHTTP(wBig, reqBig)
+	if wBig.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for oversized nama, got %d", wBig.Code)
+	}
+}

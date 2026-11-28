@@ -109,8 +109,17 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	})
 }
 
+var dummyPasswordHash []byte
+
+func init() {
+	dummyPasswordHash, _ = bcrypt.GenerateFromPassword([]byte("dummy-timing-guard-value"), bcrypt.DefaultCost)
+}
+
 // Login untuk alumni dan admin
 func (h *AuthHandler) Login(c *gin.Context) {
+	c.Header("Cache-Control", "no-store")
+	c.Header("Pragma", "no-cache")
+
 	var req models.AuthRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid"})
@@ -131,6 +140,10 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	alumni, err := h.database.FindAlumniByEmail(c.Request.Context(), req.Email)
 	if err != nil || alumni == nil {
+		// Equalize bcrypt work so timing does not reveal email existence
+		if len(dummyPasswordHash) > 0 {
+			_ = bcrypt.CompareHashAndPassword(dummyPasswordHash, []byte(req.Password))
+		}
 		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Email atau password salah"})
 		return
 	}
