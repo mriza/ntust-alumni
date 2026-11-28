@@ -5,7 +5,10 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
+	"math/big"
 	"net/http"
+	"net/mail"
 	"os"
 	"strings"
 	"time"
@@ -108,7 +111,19 @@ func allowedVerificationDomains() []string {
 }
 
 func isAllowedVerificationEmail(emailAddr string, domains []string) bool {
-	lower := strings.ToLower(strings.TrimSpace(emailAddr))
+	trimmed := strings.TrimSpace(emailAddr)
+	if trimmed == "" || strings.ContainsAny(trimmed, "\r\n<> ") {
+		return false
+	}
+	parsed, err := mail.ParseAddress(trimmed)
+	if err != nil || !strings.EqualFold(parsed.Address, trimmed) {
+		return false
+	}
+	lower := strings.ToLower(parsed.Address)
+	at := strings.IndexByte(lower, '@')
+	if at <= 0 {
+		return false
+	}
 	for _, d := range domains {
 		if strings.HasSuffix(lower, d) {
 			return true
@@ -119,17 +134,22 @@ func isAllowedVerificationEmail(emailAddr string, domains []string) bool {
 
 // RequestVerification meminta pengiriman tautan &/atau OTP verifikasi lewat email, sms, atau whatsapp.
 func (h *VerificationHandler) RequestVerification(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDVal, _ := c.Get("user_id")
+	userID, ok := userIDVal.(string)
+	if !ok || userID == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Sesi tidak valid"})
+		return
+	}
 
 	// Rate limit: maksimal 5 permintaan verifikasi per user per 15 menit
-	if allowed, _ := h.rateLimiter.CheckAndIncrement("req-verify:"+userID.(string), 5); !allowed {
+	if allowed, _ := h.rateLimiter.CheckAndIncrement("req-verify:"+userID, 5); !allowed {
 		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak permintaan verifikasi. Coba lagi dalam 15 menit"})
 		return
 	}
 
 	var req requestVerificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid: " + err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data verifikasi tidak valid"})
 		return
 	}
 
@@ -159,14 +179,26 @@ func (h *VerificationHandler) RequestVerification(c *gin.Context) {
 		return
 	}
 
-	alumni, err := h.database.GetAlumni(c.Request.Context(), userID.(string))
-	if err != nil {
+	alumni, err := h.database.GetAlumni(c.Request.Context(), userID)
+	if err != nil || alumni == nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Alumni tidak ditemukan"})
 		return
 	}
+	if alumni.Status == "verified" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Akun sudah terverifikasi"})
+		return
+	}
 
-	otp := generateOTP()
-	token := generateToken()
+	otp, err := generateOTP()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal membuat kode OTP"})
+		return
+	}
+	token, err := generateToken()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal membuat token verifikasi"})
+		return
+	}
 	expiresAt := time.Now().Add(15 * time.Minute)
 
 	otpHash, err := bcrypt.GenerateFromPassword([]byte(otp), bcrypt.DefaultCost)
@@ -209,23 +241,32 @@ func (h *VerificationHandler) RequestVerification(c *gin.Context) {
 	case "sms":
 		smsSender, ok := h.email.(SMSSender)
 		if !ok {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Pengirim SMS belum tersedia"})
-			return
+			sendErr = errors.New("pengirim SMS belum tersedia")
+		} else {
+			sendErr = smsSender.SendVerificationSMS(target, otp)
+			msg = "Kode OTP verifikasi telah dikirim melalui SMS"
 		}
-		sendErr = smsSender.SendVerificationSMS(target, otp)
-		msg = "Kode OTP verifikasi telah dikirim melalui SMS"
 	case "whatsapp":
 		waSender, ok := h.email.(WhatsAppSender)
 		if !ok {
-			c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Pengirim WhatsApp belum tersedia"})
-			return
+			sendErr = errors.New("pengirim WhatsApp belum tersedia")
+		} else {
+			sendErr = waSender.SendVerificationWhatsApp(target, otp)
+			msg = "Kode OTP verifikasi telah dikirim melalui WhatsApp"
 		}
-		sendErr = waSender.SendVerificationWhatsApp(target, otp)
-		msg = "Kode OTP verifikasi telah dikirim melalui WhatsApp"
 	}
 
 	if sendErr != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal mengirim verifikasi: " + sendErr.Error()})
+		log.Printf("Send verification via %s failed: %v", channel, sendErr)
+		// Roll back pending OTP & verification token so failed delivery leaves no active token
+		alumni.OtpHash = ""
+		alumni.OtpExpiresAt = time.Time{}
+		alumni.VerificationToken = ""
+		alumni.TokenExpiresAt = time.Time{}
+		alumni.VerificationChannel = ""
+		alumni.VerificationTarget = ""
+		_ = h.database.UpdateAlumni(c.Request.Context(), alumni)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal mengirim pesan verifikasi. Silakan coba lagi nanti"})
 		return
 	}
 
@@ -244,6 +285,11 @@ func (h *VerificationHandler) RequestVerification(c *gin.Context) {
 
 // VerificationStatus memeriksa validitas dan masa berlaku tautan/sesi verifikasi.
 func (h *VerificationHandler) VerificationStatus(c *gin.Context) {
+	if allowed, _ := h.rateLimiter.CheckAndIncrement("verify-status-ip:"+c.ClientIP(), 20); !allowed {
+		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak permintaan. Coba lagi dalam 15 menit"})
+		return
+	}
+
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Token verifikasi wajib disertakan"})
@@ -283,9 +329,14 @@ func (h *VerificationHandler) VerificationStatus(c *gin.Context) {
 
 // Verify memverifikasi alumni dengan token, OTP, dan NIM (opsional jika NIM sudah ada).
 func (h *VerificationHandler) Verify(c *gin.Context) {
+	if allowed, _ := h.rateLimiter.CheckAndIncrement("verify-ip:"+c.ClientIP(), 20); !allowed {
+		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak percobaan verifikasi. Coba lagi dalam 15 menit"})
+		return
+	}
+
 	var req verifyRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid: " + err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data verifikasi tidak valid"})
 		return
 	}
 
@@ -319,6 +370,7 @@ func (h *VerificationHandler) Verify(c *gin.Context) {
 		return
 	}
 
+	wasPending := alumni.Status != "verified"
 	alumni.Status = "verified"
 	if nim := strings.TrimSpace(req.NIM); nim != "" {
 		alumni.Nim = nim
@@ -338,7 +390,7 @@ func (h *VerificationHandler) Verify(c *gin.Context) {
 	respData := gin.H{
 		"status": "verified",
 	}
-	if len(jwtKey) > 0 {
+	if wasPending && alumni.Role != "super_admin" && len(jwtKey) > 0 {
 		if newToken, err := GenerateJWT(alumni); err == nil {
 			respData["token"] = newToken
 		}
@@ -350,20 +402,25 @@ func (h *VerificationHandler) Verify(c *gin.Context) {
 	})
 }
 
-func generateOTP() string {
-	buf := make([]byte, 6)
-	rand.Read(buf)
-	otp := ""
-	for _, b := range buf {
-		otp += string(rune('0' + int(b)%10))
+func generateOTP() (string, error) {
+	max := big.NewInt(10)
+	var b strings.Builder
+	for i := 0; i < 6; i++ {
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		b.WriteByte(byte('0' + n.Int64()))
 	}
-	return otp
+	return b.String(), nil
 }
 
-func generateToken() string {
+func generateToken() (string, error) {
 	buf := make([]byte, 32)
-	rand.Read(buf)
-	return hex.EncodeToString(buf)
+	if _, err := rand.Read(buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf), nil
 }
 
 type requestVerificationRequest struct {

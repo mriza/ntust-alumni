@@ -35,7 +35,12 @@ func (h *ForumHandler) ListForumPosts(c *gin.Context) {
 
 // CreateForumPost membuat postingan forum baru (hanya alumni terverifikasi)
 func (h *ForumHandler) CreateForumPost(c *gin.Context) {
-	userID, _ := c.Get("user_id")
+	userIDVal, _ := c.Get("user_id")
+	userID, ok := userIDVal.(string)
+	if !ok || userID == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Sesi tidak valid"})
+		return
+	}
 
 	var req models.ForumPostRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -50,7 +55,7 @@ func (h *ForumHandler) CreateForumPost(c *gin.Context) {
 		return
 	}
 
-	alumni, err := h.database.GetAlumni(c.Request.Context(), userID.(string))
+	alumni, err := h.database.GetAlumni(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Alumni tidak ditemukan"})
 		return

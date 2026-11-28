@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -52,10 +53,11 @@ func TestListAlumniRejectsPending(t *testing.T) {
 	verified.GET("/alumni/:id", h.GetAlumniByID)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  "u1",
-		"email":    "pending@example.com",
-		"role":     "member",
-		"status":   "pending",
+		"user_id": "u1",
+		"email":   "pending@example.com",
+		"role":    "member",
+		"status":  "pending",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -96,10 +98,11 @@ func TestListAlumniReturnsOnlyVerified(t *testing.T) {
 	verified.GET("/alumni", h.ListAlumni)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  "u2",
-		"email":    "verified@example.com",
-		"role":     "member",
-		"status":   "verified",
+		"user_id": "u2",
+		"email":   "verified@example.com",
+		"role":    "member",
+		"status":  "verified",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -145,10 +148,11 @@ func TestUpdateAlumniSelfUpdate(t *testing.T) {
 	protected.PUT("/alumni/:id", h.UpdateAlumni)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  "u1",
-		"email":    "alumni@example.com",
-		"role":     "member",
-		"status":   "verified",
+		"user_id": "u1",
+		"email":   "alumni@example.com",
+		"role":    "member",
+		"status":  "verified",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -206,10 +210,11 @@ func TestUpdateAlumniRejectsOtherUser(t *testing.T) {
 	protected.PUT("/alumni/:id", h.UpdateAlumni)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  "u1",
-		"email":    "user1@example.com",
-		"role":     "member",
-		"status":   "verified",
+		"user_id": "u1",
+		"email":   "user1@example.com",
+		"role":    "member",
+		"status":  "verified",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -307,15 +312,24 @@ func TestUpdateAlumniPhotoValidation(t *testing.T) {
 		return w.Code
 	}
 
-	// Valid small PNG
-	validPNG := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("pngbytes"))
+	// Valid 1x1 PNG
+	validPNG := "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
 	if code := sendPhoto(validPNG); code != http.StatusOK {
 		t.Errorf("expected 200 for valid PNG, got %d", code)
 	}
-	// Reject SVG
+	// Reject lowercase SVG and uppercase SVG bypass
 	svg := "data:image/svg+xml;base64," + base64.StdEncoding.EncodeToString([]byte("<svg/>"))
 	if code := sendPhoto(svg); code != http.StatusBadRequest {
 		t.Errorf("expected 400 for SVG, got %d", code)
+	}
+	svgUpper := "data:image/SVG+xml;base64," + base64.StdEncoding.EncodeToString([]byte("<svg/>"))
+	if code := sendPhoto(svgUpper); code != http.StatusBadRequest {
+		t.Errorf("expected 400 for uppercase SVG, got %d", code)
+	}
+	// Reject spoofed MIME header with non-PNG bytes
+	fakePNG := "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("<svg onload=alert(1)/>"))
+	if code := sendPhoto(fakePNG); code != http.StatusBadRequest {
+		t.Errorf("expected 400 for spoofed PNG bytes, got %d", code)
 	}
 	// Reject non-data-URL
 	if code := sendPhoto("https://evil.com/x.png"); code != http.StatusBadRequest {
@@ -325,5 +339,30 @@ func TestUpdateAlumniPhotoValidation(t *testing.T) {
 	big := "data:image/jpeg;base64," + base64.StdEncoding.EncodeToString(make([]byte, maxPhotoBytes+1))
 	if code := sendPhoto(big); code != http.StatusBadRequest {
 		t.Errorf("expected 400 for >2MB photo, got %d", code)
+	}
+}
+
+func TestGetAlumniByIDHidesPendingFromOtherUsers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	middleware.InitJWT("test-secret")
+	SetJWTKey([]byte("test-secret"))
+
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "p1", Nama: "Pending User", Email: "p@x.com", Status: "pending", Role: "member"})
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "v1", Nama: "Verified User", Email: "v@x.com", Status: "verified", Role: "member"})
+
+	h := NewAlumniHandler(database)
+	router := gin.New()
+	router.Use(middleware.AuthMiddleware(), middleware.RequireVerified())
+	router.GET("/alumni/:id", h.GetAlumniByID)
+
+	verTok, _ := GenerateJWT(&models.Alumni{ID: "v1", Email: "v@x.com", Role: "member", Status: "verified"})
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/alumni/p1", nil)
+	req.Header.Set("Authorization", "Bearer "+verTok)
+	router.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404 when verified member queries pending profile by ID, got %d", w.Code)
 	}
 }

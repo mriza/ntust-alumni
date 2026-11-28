@@ -17,7 +17,8 @@ func RequireVerified() gin.HandlerFunc {
 			return
 		}
 
-		if status.(string) != "verified" {
+		userStatus, ok := status.(string)
+		if !ok || userStatus != "verified" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Akun belum terverifikasi. Silakan verifikasi email dan NIM terlebih dahulu"})
 			c.Abort()
 			return

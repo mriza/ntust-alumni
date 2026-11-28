@@ -637,6 +637,98 @@ body {
     text-align: center;
 }
 
+.qa-toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.qa-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 18px;
+    margin-bottom: 12px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.05);
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+}
+
+.qa-stats {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.qa-stat {
+    min-width: 58px;
+    text-align: center;
+    padding: 8px 6px;
+    border-radius: 8px;
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    font-size: 11px;
+    color: #6c757d;
+}
+
+.qa-stat strong {
+    display: block;
+    font-size: 16px;
+    color: #2c3e50;
+}
+
+.qa-stat.answered {
+    background: #eafaf1;
+    border-color: #abebc6;
+    color: #1e8449;
+}
+
+.qa-stat.answered strong {
+    color: #1e8449;
+}
+
+.qa-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.qa-main h4 {
+    font-size: 17px;
+    margin-bottom: 8px;
+}
+
+.qa-main h4 a {
+    color: #2c3e50;
+    text-decoration: none;
+}
+
+.qa-main h4 a:hover {
+    color: #3498db;
+    text-decoration: underline;
+}
+
+.qa-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.qa-tag {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    background: #ebf5fb;
+    color: #2471a3;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.qa-meta {
+    font-size: 12px;
+    color: #7f8c8d;
+}
+
 @media (max-width: 768px) {
     .nav-container {
         flex-wrap: wrap;

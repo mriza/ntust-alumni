@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -37,10 +38,11 @@ func TestCreateForumPostRejectsPending(t *testing.T) {
 	protected.POST("/forum", h.CreateForumPost)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  "u1",
-		"email":    "pending@example.com",
-		"role":     "member",
-		"status":   "pending",
+		"user_id": "u1",
+		"email":   "pending@example.com",
+		"role":    "member",
+		"status":  "pending",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -81,10 +83,11 @@ func TestCreateForumPostAsVerified(t *testing.T) {
 	protected.POST("/forum", h.CreateForumPost)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  "u1",
-		"email":    "verified@example.com",
-		"role":     "member",
-		"status":   "verified",
+		"user_id": "u1",
+		"email":   "verified@example.com",
+		"role":    "member",
+		"status":  "verified",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 

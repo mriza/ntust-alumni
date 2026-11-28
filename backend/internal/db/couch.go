@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
+	"unicode"
 
 	"ntust-alumni/backend/internal/models"
 )
@@ -40,14 +43,31 @@ type Store interface {
 var _ Store = (*CouchDB)(nil)
 
 type CouchDB struct {
-	baseURL string
-	client  *http.Client
+	baseURL  string
+	username string
+	password string
+	client   *http.Client
 }
 
-func NewCouchDB(url string) (*CouchDB, error) {
+func NewCouchDB(rawURL string) (*CouchDB, error) {
+	u, err := url.Parse(strings.TrimSpace(rawURL))
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return nil, errors.New("gagal parsing url couchdb")
+	}
+
+	var username, password string
+	if u.User != nil {
+		username = u.User.Username()
+		password, _ = u.User.Password()
+		u.User = nil
+	}
+
+	cleanURL := strings.TrimRight(u.String(), "/")
 	c := &CouchDB{
-		baseURL: url,
-		client:  &http.Client{Timeout: 10 * time.Second},
+		baseURL:  cleanURL,
+		username: username,
+		password: password,
+		client:   &http.Client{Timeout: 10 * time.Second},
 	}
 
 	if err := c.Ping(); err != nil {
@@ -58,8 +78,35 @@ func NewCouchDB(url string) (*CouchDB, error) {
 	return c, nil
 }
 
+func (c *CouchDB) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, body)
+	if err != nil {
+		return nil, err
+	}
+	if c.username != "" || c.password != "" {
+		req.SetBasicAuth(c.username, c.password)
+	}
+	return req, nil
+}
+
+func validateDocID(id string) error {
+	if id == "" || strings.HasPrefix(id, "_") || strings.Contains(id, "..") {
+		return errors.New("id dokumen tidak valid")
+	}
+	for _, r := range id {
+		if r == '/' || r == '\\' || r == '?' || r == '#' || unicode.IsControl(r) || unicode.IsSpace(r) {
+			return errors.New("id dokumen mengandung karakter tidak valid")
+		}
+	}
+	return nil
+}
+
 func (c *CouchDB) Ping() error {
-	resp, err := c.client.Get(c.baseURL + "/")
+	req, err := c.newRequest(context.Background(), http.MethodGet, "/", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return err
 	}
@@ -71,7 +118,7 @@ func (c *CouchDB) Ping() error {
 }
 
 func (c *CouchDB) ensureDatabase(ctx context.Context, name string) error {
-	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+"/"+name, nil)
+	req, err := c.newRequest(ctx, http.MethodPut, "/"+url.PathEscape(name), nil)
 	if err != nil {
 		return err
 	}
@@ -531,7 +578,10 @@ func (c *CouchDB) ListForumPosts(ctx context.Context) ([]models.ForumPost, error
 // --- internal helpers ---
 
 func (c *CouchDB) getDoc(ctx context.Context, dbName, id string, into interface{}) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", c.baseURL+"/"+dbName+"/"+id, nil)
+	if err := validateDocID(id); err != nil {
+		return fmt.Errorf("not found")
+	}
+	req, err := c.newRequest(ctx, http.MethodGet, "/"+url.PathEscape(dbName)+"/"+url.PathEscape(id), nil)
 	if err != nil {
 		return err
 	}
@@ -554,7 +604,7 @@ func (c *CouchDB) postDoc(ctx context.Context, dbName string, doc interface{}) (
 	if err != nil {
 		return "", "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/"+dbName, bytes.NewReader(body))
+	req, err := c.newRequest(ctx, http.MethodPost, "/"+url.PathEscape(dbName), bytes.NewReader(body))
 	if err != nil {
 		return "", "", err
 	}
@@ -578,11 +628,14 @@ func (c *CouchDB) postDoc(ctx context.Context, dbName string, doc interface{}) (
 }
 
 func (c *CouchDB) putDoc(ctx context.Context, dbName, id, rev string, doc interface{}) (string, error) {
+	if err := validateDocID(id); err != nil {
+		return "", err
+	}
 	body, err := json.Marshal(doc)
 	if err != nil {
 		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, "PUT", c.baseURL+"/"+dbName+"/"+id+"?rev="+rev, bytes.NewReader(body))
+	req, err := c.newRequest(ctx, http.MethodPut, "/"+url.PathEscape(dbName)+"/"+url.PathEscape(id)+"?rev="+url.QueryEscape(rev), bytes.NewReader(body))
 	if err != nil {
 		return "", err
 	}
@@ -605,7 +658,10 @@ func (c *CouchDB) putDoc(ctx context.Context, dbName, id, rev string, doc interf
 }
 
 func (c *CouchDB) deleteDoc(ctx context.Context, dbName, id, rev string) error {
-	req, err := http.NewRequestWithContext(ctx, "DELETE", c.baseURL+"/"+dbName+"/"+id+"?rev="+rev, nil)
+	if err := validateDocID(id); err != nil {
+		return err
+	}
+	req, err := c.newRequest(ctx, http.MethodDelete, "/"+url.PathEscape(dbName)+"/"+url.PathEscape(id)+"?rev="+url.QueryEscape(rev), nil)
 	if err != nil {
 		return err
 	}
@@ -621,11 +677,11 @@ func (c *CouchDB) deleteDoc(ctx context.Context, dbName, id, rev string) error {
 }
 
 func (c *CouchDB) allDocs(ctx context.Context, dbName string, into interface{}, opts ...string) error {
-	url := c.baseURL + "/" + dbName + "/_all_docs?include_docs=true"
+	path := "/" + url.PathEscape(dbName) + "/_all_docs?include_docs=true"
 	for _, o := range opts {
-		url += "&" + o
+		path += "&" + o
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	req, err := c.newRequest(ctx, http.MethodGet, path, nil)
 	if err != nil {
 		return err
 	}
@@ -645,7 +701,7 @@ func (c *CouchDB) findDocs(ctx context.Context, dbName string, selector interfac
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/"+dbName+"/_find", bytes.NewReader(body))
+	req, err := c.newRequest(ctx, http.MethodPost, "/"+url.PathEscape(dbName)+"/_find", bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

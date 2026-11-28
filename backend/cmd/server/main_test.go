@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -76,16 +77,26 @@ func TestSecurityHeadersAndCORS(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest(http.MethodOptions, "/health", nil)
+	req.Header.Set("Origin", "http://localhost:8081")
 	router.ServeHTTP(w, req)
 
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("expected 204 for OPTIONS, got %d", w.Code)
 	}
-	if w.Header().Get("Access-Control-Allow-Origin") != "*" {
-		t.Errorf("expected Access-Control-Allow-Origin *, got %q", w.Header().Get("Access-Control-Allow-Origin"))
+	if w.Header().Get("Access-Control-Allow-Origin") != "http://localhost:8081" {
+		t.Errorf("expected Access-Control-Allow-Origin http://localhost:8081, got %q", w.Header().Get("Access-Control-Allow-Origin"))
 	}
 	if w.Header().Get("Access-Control-Allow-Credentials") != "" {
-		t.Errorf("expected Access-Control-Allow-Credentials to be omitted with *, got %q", w.Header().Get("Access-Control-Allow-Credentials"))
+		t.Errorf("expected Access-Control-Allow-Credentials to be omitted, got %q", w.Header().Get("Access-Control-Allow-Credentials"))
+	}
+
+	// Disallowed origin must NOT receive Access-Control-Allow-Origin
+	wEvil := httptest.NewRecorder()
+	reqEvil, _ := http.NewRequest(http.MethodOptions, "/health", nil)
+	reqEvil.Header.Set("Origin", "https://evil.example.com")
+	router.ServeHTTP(wEvil, reqEvil)
+	if got := wEvil.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("expected empty Access-Control-Allow-Origin for evil origin, got %q", got)
 	}
 
 	w2 := httptest.NewRecorder()
@@ -127,7 +138,7 @@ func (f *failingPingStore) FindAlumniByVerificationToken(context.Context, string
 	return nil, nil
 }
 func (f *failingPingStore) InitDatabase(context.Context) error { return nil }
-func (f *failingPingStore) Ping() error                        { return errors.New("connection refused") }
+func (f *failingPingStore) Ping() error                        { return errors.New("Get \"http://admin:TOPSECRET@couchdb:5984/\": dial tcp refused") }
 
 func TestHealthEndpointReturns503WhenCouchDBDown(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -142,5 +153,8 @@ func TestHealthEndpointReturns503WhenCouchDBDown(t *testing.T) {
 
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected 503 when CouchDB down, got %d", w.Code)
+	}
+	if strings.Contains(w.Body.String(), "TOPSECRET") || strings.Contains(w.Body.String(), "couchdb:5984") {
+		t.Fatalf("expected health error detail to be sanitized, leaked: %s", w.Body.String())
 	}
 }

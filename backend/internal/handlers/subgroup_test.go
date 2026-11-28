@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -31,6 +32,7 @@ func TestCreateSubgroupRejectsNonAdmin(t *testing.T) {
 		"user_id": "u1",
 		"role":    "member",
 		"status":  "verified",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -74,6 +76,7 @@ func TestCreateSubgroupAsSuperAdmin(t *testing.T) {
 		"user_id": "admin1",
 		"role":    "super_admin",
 		"status":  "verified",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -146,6 +149,7 @@ func TestAppointAdmin(t *testing.T) {
 		"user_id": "superadmin",
 		"role":    "super_admin",
 		"status":  "verified",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -203,6 +207,7 @@ func TestDeleteSubgroup(t *testing.T) {
 		"user_id": "superadmin",
 		"role":    "super_admin",
 		"status":  "verified",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -216,5 +221,58 @@ func TestDeleteSubgroup(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestAppointAdminSecurityBoundaries(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	middleware.InitJWT("test-secret")
+	SetJWTKey([]byte("test-secret"))
+
+	sgJkt := &models.Subgroup{Nama: "Jakarta", Wilayah: "Jakarta", AdminID: "reg-jkt"}
+	sgBdg := &models.Subgroup{Nama: "Bandung", Wilayah: "Bandung", AdminID: "reg-bdg"}
+	database.SaveSubgroup(context.Background(), sgJkt)
+	database.SaveSubgroup(context.Background(), sgBdg)
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "reg-jkt", Email: "rj@x.com", Role: "regional_admin", Status: "verified"})
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "super1", Email: "sa@x.com", Role: "super_admin", Status: "verified"})
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "pend1", Email: "p@x.com", Role: "member", Status: "pending"})
+
+	h := NewSubgroupHandler(database)
+	router := gin.New()
+	protected := router.Group("/")
+	protected.Use(middleware.AuthMiddleware(), middleware.RequireRole("super_admin", "regional_admin"))
+	protected.POST("/subgroups/:id/admin", h.AppointAdmin)
+
+	regJktTok, _ := GenerateJWT(&models.Alumni{ID: "reg-jkt", Email: "rj@x.com", Role: "regional_admin", Status: "verified"})
+
+	// Cross-region regional_admin CANNOT appoint admin for Bandung subgroup
+	wCross := httptest.NewRecorder()
+	reqCross, _ := http.NewRequest(http.MethodPost, "/subgroups/"+sgBdg.ID+"/admin", bytes.NewBufferString(`{"alumni_id":"pend1"}`))
+	reqCross.Header.Set("Content-Type", "application/json")
+	reqCross.Header.Set("Authorization", "Bearer "+regJktTok)
+	router.ServeHTTP(wCross, reqCross)
+	if wCross.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for cross-region appoint, got %d", wCross.Code)
+	}
+
+	// regional_admin of Jakarta CANNOT demote super_admin
+	wDemote := httptest.NewRecorder()
+	reqDemote, _ := http.NewRequest(http.MethodPost, "/subgroups/"+sgJkt.ID+"/admin", bytes.NewBufferString(`{"alumni_id":"super1"}`))
+	reqDemote.Header.Set("Content-Type", "application/json")
+	reqDemote.Header.Set("Authorization", "Bearer "+regJktTok)
+	router.ServeHTTP(wDemote, reqDemote)
+	if wDemote.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 when trying to demote super_admin, got %d", wDemote.Code)
+	}
+
+	// CANNOT appoint pending user
+	wPend := httptest.NewRecorder()
+	reqPend, _ := http.NewRequest(http.MethodPost, "/subgroups/"+sgJkt.ID+"/admin", bytes.NewBufferString(`{"alumni_id":"pend1"}`))
+	reqPend.Header.Set("Content-Type", "application/json")
+	reqPend.Header.Set("Authorization", "Bearer "+regJktTok)
+	router.ServeHTTP(wPend, reqPend)
+	if wPend.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 when trying to appoint pending alumni, got %d", wPend.Code)
 	}
 }

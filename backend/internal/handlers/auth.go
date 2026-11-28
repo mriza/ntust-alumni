@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -21,18 +23,40 @@ func NewAuthHandler(database db.Store) *AuthHandler {
 	return &AuthHandler{database: database, rateLimiter: NewRateLimiter()}
 }
 
+func isValidEmailAddress(raw string) bool {
+	if raw == "" || strings.ContainsAny(raw, "\r\n<> ") {
+		return false
+	}
+	parsed, err := mail.ParseAddress(raw)
+	if err != nil || !strings.EqualFold(parsed.Address, raw) {
+		return false
+	}
+	at := strings.IndexByte(parsed.Address, '@')
+	if at <= 0 {
+		return false
+	}
+	domain := parsed.Address[at+1:]
+	return strings.Contains(domain, ".") && !strings.HasPrefix(domain, ".") && !strings.HasSuffix(domain, ".")
+}
+
 // Register pendaftaran alumni baru (email bebas, status pending)
 func (h *AuthHandler) Register(c *gin.Context) {
+	ip := c.ClientIP()
+	if allowed, _ := h.rateLimiter.CheckAndIncrement("register-ip:"+ip, 10); !allowed {
+		c.JSON(http.StatusTooManyRequests, models.ErrorResponse{Error: "Terlalu banyak percobaan pendaftaran. Coba lagi nanti"})
+		return
+	}
+
 	var req models.RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid: " + err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data pendaftaran tidak valid"})
 		return
 	}
 
 	req.Nama = strings.TrimSpace(req.Nama)
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
-	if req.Nama == "" || !strings.Contains(req.Email, "@") || len(req.Password) < 6 {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Nama wajib diisi, email harus valid, dan password minimal 6 karakter"})
+	if req.Nama == "" || !isValidEmailAddress(req.Email) || len(req.Password) < 6 || len(req.Password) > 72 {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Nama wajib diisi, email harus valid, dan password harus antara 6 hingga 72 karakter"})
 		return
 	}
 
@@ -70,7 +94,8 @@ func (h *AuthHandler) Register(c *gin.Context) {
 	}
 
 	if err := h.database.SaveAlumni(c.Request.Context(), alumni); err != nil {
-		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal menyimpan data: " + err.Error()})
+		log.Printf("SaveAlumni error on register: %v", err)
+		c.JSON(http.StatusInternalServerError, models.ErrorResponse{Error: "Gagal menyimpan data pendaftaran"})
 		return
 	}
 
@@ -131,8 +156,13 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 // Me mengembalikan data user yang sedang login
 func (h *AuthHandler) Me(c *gin.Context) {
-	userID, _ := c.Get("user_id")
-	alumni, err := h.database.GetAlumni(c.Request.Context(), userID.(string))
+	userIDVal, _ := c.Get("user_id")
+	userID, ok := userIDVal.(string)
+	if !ok || userID == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Sesi tidak valid"})
+		return
+	}
+	alumni, err := h.database.GetAlumni(c.Request.Context(), userID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Alumni tidak ditemukan"})
 		return
@@ -152,12 +182,15 @@ func SetJWTKey(key []byte) {
 
 // GenerateJWT membuat token JWT HS256 untuk alumni.
 func GenerateJWT(alumni *models.Alumni) (string, error) {
+	now := time.Now()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": alumni.ID,
-		"email":   alumni.Email,
-		"role":    alumni.Role,
-		"status":  alumni.Status,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+		"user_id":   alumni.ID,
+		"email":     alumni.Email,
+		"role":      alumni.Role,
+		"status":    alumni.Status,
+		"token_use": "session",
+		"iat":       now.Unix(),
+		"exp":       now.Add(24 * time.Hour).Unix(),
 	})
 	return token.SignedString(jwtKey)
 }

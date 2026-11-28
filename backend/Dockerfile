@@ -1,4 +1,4 @@
-FROM golang:1.22-alpine AS builder
+FROM docker.io/library/golang:1.22-alpine AS builder
 
 WORKDIR /app
 
@@ -11,11 +11,14 @@ COPY . .
 
 RUN go build -o /server ./cmd/server
 
-FROM alpine:3.18
+FROM docker.io/library/alpine:3.21
 
-RUN apk add --no-cache ca-certificates
+RUN apk add --no-cache ca-certificates && \
+    adduser -D -H -u 10001 appuser
 
-COPY --from=builder /server /server
+COPY --from=builder --chown=appuser:appuser /server /server
+
+USER appuser
 
 EXPOSE 8080
 

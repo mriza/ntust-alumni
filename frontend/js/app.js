@@ -1,10 +1,13 @@
 // app.js - Alumni NTUST Indonesia SPA
 // Konfigurasi
 const hostname = window.location.hostname;
-const isLocalStatic = window.location.protocol === 'file:' ||
-    ((hostname === 'localhost' || hostname === '127.0.0.1') && window.location.port !== '8080');
-const API_BASE = isLocalStatic ? 'http://localhost:8080/api' : '/api';
-const HEALTH_URL = isLocalStatic ? 'http://localhost:8080/health' : '/health';
+const isFileOrigin = window.location.protocol === 'file:';
+const API_BASE = isFileOrigin ? 'http://localhost:8080/api' : '/api';
+const HEALTH_URL = isFileOrigin ? 'http://localhost:8080/health' : '/health';
+const ANSWER_URL = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+    ? `${window.location.protocol}//${hostname || 'localhost'}:9080`
+    : 'http://localhost:9080';
+const ANSWER_API_BASE = isFileOrigin ? `${ANSWER_URL}/answer/api/v1` : '/answer-api';
 
 const WILAYAH_LIST = [
     'Jabodetabek', 'Jakarta', 'Bandung', 'Surabaya', 'Medan',
@@ -52,7 +55,7 @@ function safeUrl(url) {
 
 function safeImageDataUrl(val) {
     const raw = String(val ?? '').trim();
-    if (raw.startsWith('data:image/') && !raw.startsWith('data:image/svg')) {
+    if (/^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/.test(raw)) {
         return raw;
     }
     return '';
@@ -109,8 +112,9 @@ async function apiFetch(path, options = {}) {
 function showAlert(message, type) {
     const app = document.getElementById('app');
     if (!app) return;
+    const safeType = ['success', 'error', 'info'].includes(type) ? type : 'info';
     const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${esc(type)}`;
+    alertDiv.className = `alert alert-${safeType}`;
     alertDiv.textContent = message;
     app.prepend(alertDiv);
     setTimeout(() => alertDiv.remove(), 5000);
@@ -155,7 +159,7 @@ function updateNav() {
 
     if (currentUser) {
         addNavLink(navLinks, 'Direktori', '#/directory');
-        addNavLink(navLinks, 'Forum', '#/forum');
+        addNavLink(navLinks, 'Forum Q&A', '#/forum');
         addNavLink(navLinks, 'Profil', '#/profile');
         if (currentUser.status !== 'verified') {
             addNavLink(navLinks, 'Verifikasi', '#/verify');
@@ -168,7 +172,7 @@ function updateNav() {
         logoutBtn.addEventListener('click', logout);
         navAuth.appendChild(logoutBtn);
     } else {
-        addNavLink(navLinks, 'Forum', '#/forum');
+        addNavLink(navLinks, 'Forum Q&A', '#/forum');
         addNavLink(navAuth, 'Login', '#/login');
         addNavLink(navAuth, 'Daftar', '#/register');
     }
@@ -233,6 +237,9 @@ function renderRoute() {
             break;
         case '/forum':
             renderForum();
+            break;
+        case '/oauth/authorize':
+            renderOAuthAuthorize(params);
             break;
         case '/subgroups':
             renderSubgroups();
@@ -1319,118 +1326,263 @@ function showAlumniDetail(alumni) {
     document.getElementById('backToDirBtn').addEventListener('click', () => navigate('/directory'));
 }
 
-// Forum
+// Forum Q&A (Apache Answer Integration + SSO)
+let qaOrder = 'newest';
+
+async function getAnswerSsoUrl() {
+    try {
+        const res = await fetch(ANSWER_API_BASE + '/connector/info');
+        if (res.ok) {
+            const payload = await res.json();
+            const connectors = payload.data || [];
+            if (connectors.length > 0 && connectors[0].link) {
+                const expectedOrigin = new URL(ANSWER_URL).origin;
+                const resolved = new URL(connectors[0].link, ANSWER_URL);
+                if (resolved.origin === expectedOrigin) {
+                    return resolved.href;
+                }
+            }
+        }
+    } catch (_) {}
+    return ANSWER_URL + '/users/login';
+}
+
 async function renderForum() {
     const app = document.getElementById('app');
+    const isVerified = currentUser && currentUser.status === 'verified';
+
     app.innerHTML = `
-        <div class="section-header">
-            <h3>Forum Diskusi</h3>
-            <div id="createPostBtn"></div>
+        <div class="section-header" style="flex-wrap: wrap; gap: 12px;">
+            <div>
+                <h3>Forum Q&amp;A Alumni NTUST</h3>
+                <p class="subtitle">Ditenagai oleh Apache Answer • Tanya jawab, voting, tag, &amp; solusi terkurasi</p>
+            </div>
+            <div class="qa-toolbar">
+                <a href="${esc(ANSWER_URL)}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Buka Forum Q&amp;A</a>
+                ${isVerified ? `<a id="answerSsoBtn" href="${esc(ANSWER_URL + '/users/login')}" target="_blank" rel="noopener noreferrer" class="btn btn-primary">Login SSO ke Q&amp;A</a>` : ''}
+            </div>
         </div>
         <div id="forumHint"></div>
+        <div class="channel-tabs" id="qaOrderTabs">
+            <button type="button" data-order="newest" class="channel-tab ${qaOrder === 'newest' ? 'active' : ''}">Terbaru</button>
+            <button type="button" data-order="active" class="channel-tab ${qaOrder === 'active' ? 'active' : ''}">Aktif</button>
+            <button type="button" data-order="unanswered" class="channel-tab ${qaOrder === 'unanswered' ? 'active' : ''}">Belum Terjawab</button>
+        </div>
         <div id="forumList"></div>
     `;
-    initCreatePostButton();
-    await loadForum();
-}
 
-function initCreatePostButton() {
-    const btnContainer = document.getElementById('createPostBtn');
-    const hintContainer = document.getElementById('forumHint');
-    if (!btnContainer) return;
-
-    if (currentUser && currentUser.status === 'verified') {
-        const btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'btn btn-primary';
-        btn.textContent = 'Buat Postingan Baru';
-        btn.addEventListener('click', openCreatePostForm);
-        btnContainer.appendChild(btn);
-    } else if (currentUser) {
-        hintContainer.innerHTML = '<div class="alert alert-info">Verifikasi akun NTUST Anda terlebih dahulu untuk membuat postingan baru. <a href="#/verify" class="btn-link">Verifikasi</a></div>';
+    const hintEl = document.getElementById('forumHint');
+    if (hintEl) {
+        if (!currentUser) {
+            hintEl.innerHTML = '<div class="alert alert-info">Login dan verifikasi akun Anda untuk masuk otomatis (SSO) dan mengajukan pertanyaan di Q&amp;A. <a href="#/login" class="btn-link">Login</a></div>';
+        } else if (!isVerified) {
+            hintEl.innerHTML = '<div class="alert alert-info">Verifikasi akun Anda terlebih dahulu agar dapat login SSO ke Forum Q&amp;A. <a href="#/verify" class="btn-link">Verifikasi Sekarang</a></div>';
+        }
     }
+
+    const tabsEl = document.getElementById('qaOrderTabs');
+    if (tabsEl && tabsEl.children) {
+        Array.from(tabsEl.children).forEach(btn => {
+            btn.addEventListener('click', () => {
+                qaOrder = btn.dataset?.order || btn.getAttribute?.('data-order') || 'newest';
+                renderForum();
+            });
+        });
+    }
+
+    if (isVerified) {
+        getAnswerSsoUrl().then(ssoHref => {
+            const ssoBtn = document.getElementById('answerSsoBtn');
+            if (ssoBtn) ssoBtn.href = ssoHref;
+        });
+    }
+
+    await loadAnswerQuestions();
 }
 
-function openCreatePostForm() {
-    const app = document.getElementById('app');
-    app.innerHTML = `
-        <div class="card">
-            <h2 class="card-title">Buat Postingan</h2>
-            <form id="forumPostForm">
-                <div class="form-group">
-                    <label for="postJudul">Judul</label>
-                    <input type="text" id="postJudul" name="judul" required placeholder="Judul Diskusi">
-                </div>
-                <div class="form-group">
-                    <label for="postIsi">Isi</label>
-                    <textarea id="postIsi" name="isi" rows="5" required placeholder="Tulis diskusi Anda..."></textarea>
-                </div>
-                <div style="display:flex; gap:10px;">
-                    <button type="submit" class="btn btn-primary">Posting</button>
-                    <button type="button" id="cancelPostBtn" class="btn btn-secondary">Batal</button>
-                </div>
-            </form>
-        </div>
-    `;
-    document.getElementById('forumPostForm').addEventListener('submit', handleCreatePost);
-    document.getElementById('cancelPostBtn').addEventListener('click', () => renderForum());
-}
-
-async function loadForum() {
+async function loadAnswerQuestions() {
     const listEl = document.getElementById('forumList');
     if (!listEl) return;
-    listEl.innerHTML = '<div class="empty-state">Memuat...</div>';
+    listEl.innerHTML = '<div class="empty-state">Memuat pertanyaan Q&amp;A...</div>';
 
     try {
-        const res = await apiFetch('/forum');
-        const data = await res.json();
+        const qs = new URLSearchParams({
+            page: '1',
+            page_size: '15',
+            order: qaOrder
+        });
+        const res = await fetch(ANSWER_API_BASE + '/question/page?' + qs.toString());
+        const payload = await res.json();
 
         if (!res.ok) {
-            listEl.innerHTML = '<div class="empty-state">Gagal memuat forum</div>';
+            listEl.innerHTML = '<div class="empty-state">Forum Q&amp;A sedang tidak dapat diakses</div>';
             return;
         }
 
-        const posts = data.data || [];
-        if (posts.length === 0) {
-            listEl.innerHTML = '<div class="empty-state">Belum ada postingan. Jadi yang pertama!</div>';
+        const questions = payload.data?.list || [];
+        if (questions.length === 0) {
+            listEl.innerHTML = `<div class="empty-state">Belum ada pertanyaan Q&amp;A. <a href="${esc(ANSWER_URL + '/questions/ask')}" target="_blank" rel="noopener noreferrer" class="btn-link">Ajukan pertanyaan pertama di Apache Answer</a></div>`;
             return;
         }
 
         listEl.innerHTML = '';
-        posts.forEach(p => {
-            const postEl = document.createElement('div');
-            postEl.className = 'forum-post-item';
-            postEl.innerHTML = `
-                <div class="forum-post-header">
-                    <span class="forum-post-author">${esc(p.penulis_nama || '-')}</span>
-                    <span class="forum-post-date">${esc(formatDate(p.dibuat_pada))}</span>
+        questions.forEach(q => {
+            const qId = encodeURIComponent(q.id || '');
+            const qUrl = `${ANSWER_URL}/questions/${qId}`;
+            const tags = Array.isArray(q.tags) ? q.tags : [];
+            const tagsHtml = tags.map(t => `<span class="qa-tag">${esc(t.display_name || t.slug_name || '')}</span>`).join('');
+            const isAccepted = Boolean(q.accepted_answer_id && q.accepted_answer_id !== '0');
+            const author = q.operator?.display_name || q.user_info?.display_name || 'Alumni';
+            const createdVal = typeof q.created_at === 'number' ? new Date(q.created_at * 1000).toISOString() : q.created_at;
+
+            const card = document.createElement('div');
+            card.className = 'qa-card';
+            card.innerHTML = `
+                <div class="qa-stats">
+                    <div class="qa-stat"><strong>${esc(q.vote_count ?? 0)}</strong><span>vote</span></div>
+                    <div class="qa-stat ${isAccepted ? 'answered' : ''}"><strong>${esc(q.answer_count ?? 0)}</strong><span>jawaban</span></div>
+                    <div class="qa-stat"><strong>${esc(q.view_count ?? 0)}</strong><span>lihat</span></div>
                 </div>
-                <h4 class="forum-post-title">${esc(p.judul || '-')}</h4>
-                <div class="forum-post-body">${esc(p.isi || '')}</div>
+                <div class="qa-main">
+                    <h4><a href="${esc(qUrl)}" target="_blank" rel="noopener noreferrer">${esc(q.title || '-')}</a></h4>
+                    ${tagsHtml ? `<div class="qa-tags">${tagsHtml}</div>` : ''}
+                    <div class="qa-meta">Ditanyakan oleh <strong>${esc(author)}</strong> • ${esc(formatDate(createdVal))}</div>
+                </div>
             `;
-            listEl.appendChild(postEl);
+            listEl.appendChild(card);
         });
     } catch (_) {
-        listEl.innerHTML = '<div class="empty-state">Gagal memuat forum</div>';
+        listEl.innerHTML = '<div class="empty-state">Gagal memuat pertanyaan dari Apache Answer</div>';
     }
 }
 
-async function handleCreatePost(e) {
-    e.preventDefault();
-    const form = new FormData(e.target);
-    const res = await apiFetch('/forum', {
-        method: 'POST',
-        body: JSON.stringify({
-            judul: String(form.get('judul') || '').trim(),
-            isi: String(form.get('isi') || '').trim(),
-        })
-    });
-    const data = await res.json();
-    if (res.ok || res.status === 201) {
-        await renderForum();
-        showAlert('Postingan berhasil diposting', 'success');
-    } else {
-        showAlert(data.error || 'Gagal memposting', 'error');
+async function renderOAuthAuthorize(params) {
+    const app = document.getElementById('app');
+    const clientId = params ? (params.get('client_id') || '') : '';
+    const redirectUri = params ? (params.get('redirect_uri') || '') : '';
+    const state = params ? (params.get('state') || '') : '';
+    const responseType = params ? (params.get('response_type') || 'code') : 'code';
+    const scope = params ? (params.get('scope') || 'openid profile email') : 'openid profile email';
+
+    if (!clientId || !redirectUri) {
+        app.innerHTML = '<div class="card"><h2 class="card-title">SSO OAuth2</h2><div class="alert alert-error">Parameter otorisasi SSO tidak lengkap.</div><a href="#/forum" class="btn btn-primary">Kembali ke Forum Q&amp;A</a></div>';
+        return;
+    }
+
+    if (!currentUser) {
+        app.innerHTML = `
+            <div class="card">
+                <h2 class="card-title">Login SSO Forum Q&amp;A</h2>
+                <p class="subtitle">Masuk dengan akun Alumni NTUST Indonesia untuk melanjutkan ke Forum Q&amp;A Apache Answer.</p>
+                <div id="ssoLoginError" style="margin-top: 12px;"></div>
+                <form id="ssoLoginForm" style="margin-top: 16px;">
+                    <div class="form-group">
+                        <label for="ssoEmail">Email</label>
+                        <input type="email" id="ssoEmail" name="email" required placeholder="nama@domain.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="ssoPassword">Password</label>
+                        <input type="password" id="ssoPassword" name="password" required placeholder="******">
+                    </div>
+                    <button type="submit" class="btn btn-primary btn-block">Login &amp; Lanjutkan ke Q&amp;A</button>
+                </form>
+            </div>
+        `;
+        document.getElementById('ssoLoginForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = new FormData(e.target);
+            const errEl = document.getElementById('ssoLoginError');
+            errEl.innerHTML = '';
+            try {
+                const res = await apiFetch('/login', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        email: String(form.get('email') || '').trim(),
+                        password: String(form.get('password') || '')
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    errEl.innerHTML = `<div class="alert alert-error">${esc(data.error || 'Login gagal')}</div>`;
+                    return;
+                }
+                token = data.token;
+                localStorage.setItem('token', token);
+                const meRes = await apiFetch('/me');
+                if (meRes.ok) {
+                    currentUser = (await meRes.json()).data;
+                }
+                updateNav();
+                renderOAuthAuthorize(params);
+            } catch (_) {
+                errEl.innerHTML = '<div class="alert alert-error">Gagal terhubung ke server</div>';
+            }
+        });
+        return;
+    }
+
+    if (currentUser.status !== 'verified') {
+        app.innerHTML = `
+            <div class="card">
+                <h2 class="card-title">Verifikasi Diperlukan</h2>
+                <div class="alert alert-info" style="margin-top: 12px;">Akun Anda masih berstatus <strong>Pending</strong>. Hanya alumni terverifikasi yang dapat masuk ke Forum Q&amp;A melalui SSO.</div>
+                <a href="#/verify" class="btn btn-primary">Verifikasi Akun Sekarang</a>
+            </div>
+        `;
+        return;
+    }
+
+    app.innerHTML = `
+        <div class="card">
+            <h2 class="card-title">Otorisasi Login SSO Forum Q&amp;A</h2>
+            <p class="subtitle">Aplikasi <strong>Forum Q&amp;A Apache Answer</strong> (${esc(ANSWER_URL)}) meminta izin masuk menggunakan akun terverifikasi Anda:</p>
+            <div class="confirm-box" style="margin: 16px 0;">
+                <p><strong>Nama:</strong> ${esc(currentUser.nama)}</p>
+                <p><strong>Email:</strong> ${esc(currentUser.email)}</p>
+            </div>
+            <div id="oauthAuthStatus" style="margin-bottom: 14px;"></div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                <button type="button" id="confirmOAuthBtn" class="btn btn-primary">Izinkan &amp; Masuk ke Forum Q&amp;A</button>
+                <a href="#/forum" class="btn btn-secondary">Batal</a>
+            </div>
+        </div>
+    `;
+
+    const confirmBtn = document.getElementById('confirmOAuthBtn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', async () => {
+            confirmBtn.disabled = true;
+            const statusEl = document.getElementById('oauthAuthStatus');
+            if (statusEl) statusEl.innerHTML = '<div class="empty-state">Mengalihkan ke Apache Answer...</div>';
+            try {
+                const res = await apiFetch('/oauth/authorize', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        client_id: clientId,
+                        redirect_uri: redirectUri,
+                        state,
+                        response_type: responseType,
+                        scope
+                    })
+                });
+                const data = await res.json();
+                const targetUrl = safeUrl(data.data?.redirect_url);
+                const expectedOrigin = new URL(ANSWER_URL).origin;
+                if (res.ok && targetUrl && new URL(targetUrl).origin === expectedOrigin) {
+                    window.location.href = targetUrl;
+                } else {
+                    confirmBtn.disabled = false;
+                    if (statusEl) {
+                        statusEl.innerHTML = `<div class="alert alert-error">${esc(data.error || 'Otorisasi SSO gagal')}</div>`;
+                    }
+                }
+            } catch (_) {
+                confirmBtn.disabled = false;
+                if (statusEl) {
+                    statusEl.innerHTML = '<div class="alert alert-error">Gagal menghubungi server otorisasi SSO</div>';
+                }
+            }
+        });
     }
 }
 

@@ -334,27 +334,5 @@ func main() {
 		}
 	}
 
-	// Seed contoh postingan forum jika kosong
-	posts, err := database.ListForumPosts(ctx)
-	if err != nil {
-		log.Fatalf("Gagal memeriksa postingan forum: %v", err)
-	}
-	if len(posts) == 0 {
-		admin := seededByEmail["admin@ntust-alumni.id"]
-		post := &models.ForumPost{
-			Judul:       "Selamat Datang di Portal Alumni NTUST Indonesia",
-			Isi:         "Halo rekan-rekan alumni NTUST! Silakan lengkapi profil, perbarui data pekerjaan, dan gunakan direktori serta forum ini untuk berkolaborasi lintas angkatan dan wilayah.",
-			PenulisID:   admin.ID,
-			PenulisNama: admin.Nama,
-			Wilayah:     admin.Wilayah,
-		}
-		if err := database.SaveForumPost(ctx, post); err != nil {
-			log.Fatalf("Gagal seed forum post: %v", err)
-		}
-		log.Printf("Berhasil seed contoh forum post (id=%s)", post.ID)
-	} else {
-		log.Printf("Forum posts sudah terisi (%d post), skip seed forum", len(posts))
-	}
-
 	log.Println("Seed selesai.")
 }

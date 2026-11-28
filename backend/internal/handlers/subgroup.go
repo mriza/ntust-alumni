@@ -121,11 +121,25 @@ func (h *SubgroupHandler) DeleteSubgroup(c *gin.Context) {
 // AppointAdmin menunjuk admin di wilayah tertentu
 func (h *SubgroupHandler) AppointAdmin(c *gin.Context) {
 	subgroupID := c.Param("id")
+	callerIDVal, _ := c.Get("user_id")
+	callerRoleVal, _ := c.Get("user_role")
+	callerID, okID := callerIDVal.(string)
+	callerRole, okRole := callerRoleVal.(string)
+	if !okID || !okRole || callerID == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Sesi tidak valid"})
+		return
+	}
+
 	var req struct {
 		AlumniID string `json:"alumni_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid"})
+		return
+	}
+	req.AlumniID = strings.TrimSpace(req.AlumniID)
+	if req.AlumniID == "" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "alumni_id wajib diisi"})
 		return
 	}
 
@@ -135,9 +149,24 @@ func (h *SubgroupHandler) AppointAdmin(c *gin.Context) {
 		return
 	}
 
+	// Regional admin hanya boleh mengelola subgroup tempat dia menjadi admin aktif
+	if callerRole == "regional_admin" && subgroup.AdminID != callerID {
+		c.JSON(http.StatusForbidden, models.ErrorResponse{Error: "Hanya super_admin atau admin wilayah terkait yang dapat menunjuk admin subgroup ini"})
+		return
+	}
+
 	alumni, err := h.database.GetAlumni(c.Request.Context(), req.AlumniID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Alumni tidak ditemukan"})
+		return
+	}
+
+	if alumni.Role == "super_admin" {
+		c.JSON(http.StatusForbidden, models.ErrorResponse{Error: "Tidak dapat mengubah role super_admin"})
+		return
+	}
+	if alumni.Status != "verified" {
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Hanya alumni terverifikasi yang dapat ditunjuk sebagai admin wilayah"})
 		return
 	}
 

@@ -14,16 +14,45 @@ import (
 )
 
 func TestNewCouchDBStoresBaseURL(t *testing.T) {
-	// Construct directly to avoid requiring a live CouchDB for ping
-	c := &CouchDB{
-		baseURL: "http://admin:pass@localhost:5984",
-		client:  &http.Client{},
+	var seenAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		seenAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"couchdb":"Welcome"}`))
+	}))
+	defer srv.Close()
+
+	// Insert credentials into URL and verify NewCouchDB strips them from baseURL while sending Basic Auth
+	rawWithCreds := strings.Replace(srv.URL, "http://", "http://admin:SuperSecretPass@", 1)
+	c, err := NewCouchDB(rawWithCreds)
+	if err != nil {
+		t.Fatalf("expected NewCouchDB to succeed, got %v", err)
 	}
-	if c.baseURL != "http://admin:pass@localhost:5984" {
-		t.Fatalf("expected baseURL %q, got %q", "http://admin:pass@localhost:5984", c.baseURL)
+	if strings.Contains(c.baseURL, "SuperSecretPass") || strings.Contains(c.baseURL, "admin@") {
+		t.Fatalf("expected credentials stripped from baseURL, got %q", c.baseURL)
 	}
-	if c.client == nil {
-		t.Fatal("expected http client to be set")
+	if !strings.HasPrefix(seenAuth, "Basic ") {
+		t.Errorf("expected Basic auth header sent to CouchDB, got %q", seenAuth)
+	}
+	// Verify unreachable host error does not leak password
+	_, errFail := NewCouchDB("http://admin:SecretFailPass@127.0.0.1:1")
+	if errFail == nil {
+		t.Fatal("expected error for closed port")
+	}
+	if strings.Contains(errFail.Error(), "SecretFailPass") {
+		t.Fatalf("expected password stripped from error, got %v", errFail)
+	}
+}
+
+func TestCouchDBRejectsInvalidDocIDs(t *testing.T) {
+	c := &CouchDB{baseURL: "http://127.0.0.1:1", client: &http.Client{}}
+	for _, bad := range []string{"", "_all_docs", "_security", "../subgroups/1", "abc/def", "abc?rev=1", "abc#frag"} {
+		if _, err := c.GetAlumni(context.Background(), bad); err == nil {
+			t.Errorf("expected GetAlumni to reject doc ID %q", bad)
+		}
+		if err := c.DeleteSubgroup(context.Background(), bad, "1-rev"); err == nil {
+			t.Errorf("expected DeleteSubgroup to reject doc ID %q", bad)
+		}
 	}
 }
 

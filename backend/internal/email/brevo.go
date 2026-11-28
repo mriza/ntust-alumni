@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -118,7 +120,9 @@ func (c *BrevoClient) SendVerificationOTP(to, otp, token string) error {
 	if frontendURL == "" {
 		frontendURL = "http://localhost:8081"
 	}
-	verifyURL := fmt.Sprintf("%s/#/verify/confirm?token=%s&channel=email", frontendURL, token)
+	verifyURL := fmt.Sprintf("%s/#/verify/confirm?token=%s&channel=email", frontendURL, url.QueryEscape(token))
+	safeOTP := html.EscapeString(otp)
+	safeVerifyURL := html.EscapeString(verifyURL)
 
 	htmlContent := fmt.Sprintf(`
 		<h2>Verifikasi Akun Alumni NTUST</h2>
@@ -126,7 +130,7 @@ func (c *BrevoClient) SendVerificationOTP(to, otp, token string) error {
 		<p>Tautan dan kode ini berlaku selama 15 menit.</p>
 		<p>Klik tautan unik berikut untuk membuka halaman konfirmasi dan memasukkan kode OTP: <a href="%s">Konfirmasi Verifikasi Akun</a></p>
 		<p>Atau salin tautan ini ke browser: %s</p>
-	`, otp, verifyURL, verifyURL)
+	`, safeOTP, safeVerifyURL, safeVerifyURL)
 
 	reqBody := sendEmailRequest{
 		To: []map[string]string{

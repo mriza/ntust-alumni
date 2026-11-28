@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -12,8 +13,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	"ntust-alumni/backend/internal/models"
 	"ntust-alumni/backend/internal/middleware"
+	"ntust-alumni/backend/internal/models"
 )
 
 func TestVerificationRequestAndVerifyFlow(t *testing.T) {
@@ -43,9 +44,10 @@ func TestVerificationRequestAndVerifyFlow(t *testing.T) {
 
 	// Step 1: Request verification
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id":  "u1",
-		"email":    "budi@gmail.com",
-		"role":     "member",
+		"user_id": "u1",
+		"email":   "budi@gmail.com",
+		"role":    "member",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -130,6 +132,7 @@ func TestVerificationRejectsNonNtustEmail(t *testing.T) {
 		"user_id": "u1",
 		"email":   "budi@gmail.com",
 		"role":    "member",
+		"exp":     time.Now().Add(time.Hour).Unix(),
 	})
 	tokenString, _ := token.SignedString([]byte("test-secret"))
 
@@ -545,5 +548,67 @@ func TestVerificationRejectsCerdasClubEmail(t *testing.T) {
 	}
 	if emailClient.callCount != 0 {
 		t.Errorf("expected 0 emails sent, got %d", emailClient.callCount)
+	}
+}
+
+type failingEmailClient struct{}
+
+func (f *failingEmailClient) SendVerificationOTP(to, otp, token string) error {
+	return errors.New("smtp connection timeout: internal-host")
+}
+
+func TestRequestVerificationRejectsAlreadyVerifiedAndRollsBackOnError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	middleware.InitJWT("test-secret")
+	SetJWTKey([]byte("test-secret"))
+
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "u-ver", Email: "v@gmail.com", Role: "super_admin", Status: "verified"})
+	database.SaveAlumni(context.Background(), &models.Alumni{ID: "u-pend", Email: "p@gmail.com", Role: "member", Status: "pending"})
+
+	h := NewVerificationHandler(database, &failingEmailClient{})
+	router := gin.New()
+	router.Use(middleware.AuthMiddleware())
+	router.POST("/request-verification", h.RequestVerification)
+
+	// Already verified user cannot mint fresh verification token
+	verTok, _ := GenerateJWT(&models.Alumni{ID: "u-ver", Email: "v@gmail.com", Role: "super_admin", Status: "verified"})
+	w1 := httptest.NewRecorder()
+	r1, _ := http.NewRequest(http.MethodPost, "/request-verification", bytes.NewBufferString(`{"channel":"email","email_ntust":"admin@mail.ntust.edu.tw"}`))
+	r1.Header.Set("Content-Type", "application/json")
+	r1.Header.Set("Authorization", "Bearer "+verTok)
+	router.ServeHTTP(w1, r1)
+	if w1.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for already-verified account, got %d: %s", w1.Code, w1.Body.String())
+	}
+
+	// Failed email send rolls back OTP & token in DB and sanitizes error message
+	pendTok, _ := GenerateJWT(&models.Alumni{ID: "u-pend", Email: "p@gmail.com", Role: "member", Status: "pending"})
+	w2 := httptest.NewRecorder()
+	r2, _ := http.NewRequest(http.MethodPost, "/request-verification", bytes.NewBufferString(`{"channel":"email","email_ntust":"pend@mail.ntust.edu.tw"}`))
+	r2.Header.Set("Content-Type", "application/json")
+	r2.Header.Set("Authorization", "Bearer "+pendTok)
+	router.ServeHTTP(w2, r2)
+	if w2.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 on delivery error, got %d", w2.Code)
+	}
+	if bytes.Contains(w2.Body.Bytes(), []byte("internal-host")) {
+		t.Errorf("expected sanitized error message, got %s", w2.Body.String())
+	}
+	stored, _ := database.GetAlumni(context.Background(), "u-pend")
+	if stored.VerificationToken != "" || stored.OtpHash != "" {
+		t.Errorf("expected failed delivery to roll back verification token & OTP, got token=%q", stored.VerificationToken)
+	}
+}
+
+func TestVerificationRejectsMalformedEmails(t *testing.T) {
+	domains := []string{"@mail.ntust.edu.tw"}
+	for _, bad := range []string{"@mail.ntust.edu.tw", "a@b@mail.ntust.edu.tw", "bad\r\n@mail.ntust.edu.tw", "Name <a@mail.ntust.edu.tw>"} {
+		if isAllowedVerificationEmail(bad, domains) {
+			t.Errorf("expected malformed verification email %q to be rejected", bad)
+		}
+	}
+	if !isAllowedVerificationEmail("m11015001@mail.ntust.edu.tw", domains) {
+		t.Error("expected valid @mail.ntust.edu.tw address to be accepted")
 	}
 }

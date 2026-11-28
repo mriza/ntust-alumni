@@ -43,3 +43,24 @@ func TestOTPRateLimiterResetsAfterExpiry(t *testing.T) {
 		t.Fatal("expected allowed after expiry")
 	}
 }
+
+func TestRateLimiterCleanupEvictsExpiredNonLockedEntries(t *testing.T) {
+	rl := NewRateLimiter()
+	rl.attempts["stale"] = rateLimitEntry{
+		count:   1,
+		firstAt: time.Now().Add(-20 * time.Minute),
+		lastAt:  time.Now().Add(-20 * time.Minute),
+	}
+	rl.attempts["fresh"] = rateLimitEntry{
+		count:   1,
+		firstAt: time.Now(),
+		lastAt:  time.Now(),
+	}
+	rl.Cleanup()
+	if _, ok := rl.attempts["stale"]; ok {
+		t.Fatal("expected stale unlocked entry to be evicted")
+	}
+	if _, ok := rl.attempts["fresh"]; !ok {
+		t.Fatal("expected fresh entry to remain")
+	}
+}

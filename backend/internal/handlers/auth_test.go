@@ -479,3 +479,30 @@ func TestLoginRateLimitReturns429(t *testing.T) {
 		t.Fatalf("expected 429 on 6th login attempt, got %d", w6.Code)
 	}
 }
+
+func TestRegisterRejectsLongPasswordAndMalformedEmail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	database := newFakeDB()
+	h := NewAuthHandler(database)
+	router := gin.New()
+	router.POST("/register", h.Register)
+
+	longPass := strings.Repeat("a", 73)
+	b1 := `{"nama":"Test","email":"valid@example.com","password":"` + longPass + `"}`
+	w1 := httptest.NewRecorder()
+	r1, _ := http.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(b1))
+	r1.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w1, r1)
+	if w1.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for >72-byte password, got %d", w1.Code)
+	}
+
+	b2 := `{"nama":"Test","email":"@invalid","password":"password123"}`
+	w2 := httptest.NewRecorder()
+	r2, _ := http.NewRequest(http.MethodPost, "/register", bytes.NewBufferString(b2))
+	r2.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(w2, r2)
+	if w2.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for malformed email, got %d", w2.Code)
+	}
+}

@@ -9,15 +9,15 @@ Aplikasi manajemen data dan komunikasi untuk alumni National Taiwan University o
 - **Direktori Alumni** — cari (`?q=`), filter (`wilayah`, `jurusan`), urutkan (`sort`), dan paginasi profil alumni terverifikasi
 - **Subgroup Per Wilayah** — ikatan alumni NTUST per wilayah (misal: Jakarta, Bandung)
 - **Penunjukan Admin Wilayah** — tunjuk alumni di wilayah tertentu sebagai `regional_admin`
-- **Forum Diskusi** — channel komunikasi untuk alumni (posting khusus alumni terverifikasi)
-- **Manajemen Profil** — lengkapi data kontak, media sosial, foto profil (PNG/JPG/WEBP/GIF maks 2 MB), pekerjaan, dan pendidikan NTUST
+- **Forum Q&A (Apache Answer + SSO)** — platform Q&A lengkap (pertanyaan, jawaban, accepted answer, voting, tag) terintegrasi lewat OAuth2 SSO untuk alumni terverifikasi
 
 ## Tech Stack
 
-- **Backend**: Go 1.22+ + Gin + CouchDB REST client (`net/http`)
-- **Frontend**: Vanilla JS SPA (no build step)
+- **Backend**: Go 1.22+ + Gin + CouchDB REST client (`net/http`) + OAuth2 Provider
+- **Frontend**: Vanilla JS SPA (no build step) + Nginx reverse proxy
+- **Forum Q&A**: Apache Answer (`connector-basic` OAuth2 SSO) + SQLite
 - **Database**: CouchDB 3.3
-- **Email**: Brevo API v3
+- **Email / SMS / WA**: Brevo API v3
 
 ## Mulai dengan Docker
 
@@ -27,13 +27,17 @@ cp .env.example .env
 chmod 600 .env
 
 # Build dan jalankan semua service
-docker-compose up -d
+docker-compose up -d --build
+
+# Aktifkan & konfigurasikan SSO OAuth2 pada Apache Answer (sekali saat inisialisasi)
+python3 scripts/configure_answer_sso.py
 
 # Cek health endpoint
 curl http://localhost:8080/health
 ```
 
-Aplikasi frontend dibuka di: [http://localhost:8081](http://localhost:8081)
+- **Portal Alumni**: [http://localhost:8081](http://localhost:8081)
+- **Forum Q&A (Apache Answer)**: [http://localhost:9080](http://localhost:9080)
 
 ### Lingkungan (Environment Variables)
 

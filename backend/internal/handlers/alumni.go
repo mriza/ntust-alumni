@@ -146,11 +146,20 @@ func AlumniPublicFromAlumni(a *models.Alumni) AlumniPublic {
 	}
 }
 
-// GetAlumniByID mengembalikan detail satu alumni
+// GetAlumniByID mengembalikan detail satu alumni terverifikasi (atau profil sendiri / super_admin)
 func (h *AlumniHandler) GetAlumniByID(c *gin.Context) {
 	id := c.Param("id")
 	alumni, err := h.database.GetAlumni(c.Request.Context(), id)
-	if err != nil {
+	if err != nil || alumni == nil {
+		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Alumni tidak ditemukan"})
+		return
+	}
+
+	callerIDVal, _ := c.Get("user_id")
+	callerRoleVal, _ := c.Get("user_role")
+	callerID, _ := callerIDVal.(string)
+	callerRole, _ := callerRoleVal.(string)
+	if alumni.Status != "verified" && callerID != alumni.ID && callerRole != "super_admin" {
 		c.JSON(http.StatusNotFound, models.ErrorResponse{Error: "Alumni tidak ditemukan"})
 		return
 	}
@@ -182,48 +191,66 @@ type UpdateAlumniRequest struct {
 
 const maxPhotoBytes = 2 * 1024 * 1024 // 2 MB
 
-// validatePhotoHeader validates base64 image data, returns data URL or error
+var allowedPhotoPrefixes = map[string]string{
+	"data:image/png;base64,":  "image/png",
+	"data:image/jpeg;base64,": "image/jpeg",
+	"data:image/jpg;base64,":  "image/jpeg",
+	"data:image/webp;base64,": "image/webp",
+	"data:image/gif;base64,":  "image/gif",
+}
+
+// validatePhoto validates base64 raster image data URL and verifies magic bytes.
 func validatePhoto(fotoB64 string) error {
 	if fotoB64 == "" {
 		return nil
 	}
-	// Check for data URL prefix
-	if !strings.HasPrefix(fotoB64, "data:image/") {
-		return errors.New("Foto harus diupload sebagai data URL (data:image/...)")
+	expectedMIME := ""
+	b64Data := ""
+	for prefix, mime := range allowedPhotoPrefixes {
+		if strings.HasPrefix(fotoB64, prefix) {
+			expectedMIME = mime
+			b64Data = fotoB64[len(prefix):]
+			break
+		}
 	}
-	if strings.HasPrefix(fotoB64, "data:image/svg") {
-		return errors.New("Format SVG tidak didukung")
+	if expectedMIME == "" || b64Data == "" {
+		return errors.New("Format foto harus PNG, JPEG, WEBP, atau GIF berbasis base64 (SVG tidak didukung)")
 	}
-	// Extract base64 and check size
-	parts := strings.SplitN(fotoB64, ",", 2)
-	if len(parts) != 2 || parts[1] == "" {
-		return errors.New("Format foto tidak valid")
-	}
-	decoded, err := base64.StdEncoding.DecodeString(parts[1])
-	if err != nil {
+	decoded, err := base64.StdEncoding.DecodeString(b64Data)
+	if err != nil || len(decoded) == 0 {
 		return errors.New("Foto tidak dapat didecode")
 	}
 	if len(decoded) > maxPhotoBytes {
 		return errors.New("Foto terlalu besar (maksimal 2 MB)")
 	}
+	detected := http.DetectContentType(decoded)
+	if detected != expectedMIME {
+		return errors.New("Isi file foto tidak sesuai dengan format gambar yang dideklarasikan")
+	}
 	return nil
 }
 
-// UpdateAlumni memperbarui profil alumni (sendiri atau admin)
+// UpdateAlumni memperbarui profil alumni (sendiri atau super_admin)
 func (h *AlumniHandler) UpdateAlumni(c *gin.Context) {
 	id := c.Param("id")
-	userID, _ := c.Get("user_id")
-	userRole, _ := c.Get("user_role")
+	userIDVal, _ := c.Get("user_id")
+	userRoleVal, _ := c.Get("user_role")
+	userID, okID := userIDVal.(string)
+	userRole, _ := userRoleVal.(string)
+	if !okID || userID == "" {
+		c.JSON(http.StatusUnauthorized, models.ErrorResponse{Error: "Sesi tidak valid"})
+		return
+	}
 
-	// Hanya sendiri atau super_admin/regional_admin yang boleh edit
-	if userID.(string) != id && userRole.(string) != "super_admin" {
+	// Hanya sendiri atau super_admin yang boleh edit
+	if userID != id && userRole != "super_admin" {
 		c.JSON(http.StatusForbidden, models.ErrorResponse{Error: "Tidak boleh mengedit data orang lain"})
 		return
 	}
 
 	var req UpdateAlumniRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data tidak valid: " + err.Error()})
+		c.JSON(http.StatusBadRequest, models.ErrorResponse{Error: "Data profil tidak valid"})
 		return
 	}
 

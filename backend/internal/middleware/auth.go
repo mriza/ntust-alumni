@@ -36,7 +36,7 @@ func AuthMiddleware() gin.HandlerFunc {
 				return nil, jwt.ErrSignatureInvalid
 			}
 			return JwtSecret, nil
-		})
+		}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithExpirationRequired())
 		if err != nil || !token.Valid {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token tidak valid"})
 			c.Abort()
@@ -50,10 +50,29 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		c.Set("user_id", claims["user_id"])
-		c.Set("user_role", claims["role"])
-		c.Set("user_email", claims["email"])
-		c.Set("user_status", claims["status"])
+		// Tolak token selain sesi portal (misalnya token_use=oauth_access tidak boleh mengakses API portal)
+		if tokenUse, exists := claims["token_use"]; exists {
+			if useStr, ok := tokenUse.(string); !ok || useStr != "session" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Jenis token tidak diizinkan"})
+				c.Abort()
+				return
+			}
+		}
+
+		userID, ok := claims["user_id"].(string)
+		if !ok || strings.TrimSpace(userID) == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token tidak memiliki identitas valid"})
+			c.Abort()
+			return
+		}
+		userRole, _ := claims["role"].(string)
+		userEmail, _ := claims["email"].(string)
+		userStatus, _ := claims["status"].(string)
+
+		c.Set("user_id", userID)
+		c.Set("user_role", userRole)
+		c.Set("user_email", userEmail)
+		c.Set("user_status", userStatus)
 		c.Next()
 	}
 }
